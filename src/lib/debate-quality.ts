@@ -34,6 +34,10 @@ const REPEAT_PHRASES = [
   "영광",
   "퍼포먼스",
   "체급",
+  "양측 모두",
+  "조건부 접근",
+  "설득력 있습니다",
+  "일리가 있습니다",
 ];
 
 function significantWords(text: string): Set<string> {
@@ -90,14 +94,12 @@ export function hasAwkwardSourceCitation(content: string): boolean {
   );
 }
 
-/** 선수·팀 팩트 오류 (예: 쵸비=T1) */
+/** 선수·팀 등 검증 DB에 있는 대상의 팩트 오류 */
 export function hasGroundTruthViolation(
   ctx: TopicContext,
   personaId: PersonaId,
   content: string,
 ): boolean {
-  if (ctx.domain !== "esports") return false;
-
   const side =
     personaId === "pro"
       ? ctx.sideA

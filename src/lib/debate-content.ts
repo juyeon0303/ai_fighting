@@ -245,9 +245,23 @@ function rebuttalRule(personaId: PersonaId, round: number): string {
 
 function exampleLine(ctx: TopicContext): string {
   if (ctx.sideA && ctx.sideB) {
-    return `예:나는 ${ctx.sideA} 쪽인데 손목·컨디션 변수 빼면 지금 비교에선 설득력 있음.`;
+    const hint =
+      ctx.domain === "food"
+        ? "상황·입맛"
+        : ctx.domain === "tech"
+          ? "쓸 때 체감"
+          : ctx.domain === "social"
+            ? "현실 조건"
+            : "숨은 변수";
+    return `예:나는 ${ctx.sideA} 쪽인데 ${hint} 보면 지금 비교에선 설득력 있음.`;
   }
-  return "예:나는 이쪽인데 숨은 변수 하나 짚고 말할게.";
+  const openers: Partial<Record<TopicDomain, string>> = {
+    food: "예:나는 찬성인데 혼밥·야식 상황에선 이게 더 낫다고 봄.",
+    tech: "예:나는 찬성인데 생산성 체감이 더 크다고 봄.",
+    social: "예:나는 찬성인데 일상에서 바로 이득이 있다고 봄.",
+    science: "예:나는 이 설명이 관측이랑 더 맞다고 봄.",
+  };
+  return openers[ctx.domain] ?? "예:나는 이쪽인데 숨은 변수 하나 짚고 말할게.";
 }
 
 export function buildDebatePrompt(

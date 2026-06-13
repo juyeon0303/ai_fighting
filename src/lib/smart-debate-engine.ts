@@ -244,8 +244,8 @@ function freshnessFlavor(
   const lens = pickNovelLens(ctx.domain, round, personaId);
   return pickSeeded(
     [
-      `뻔한 말 말고 ${lens} 쪽으로 보면 답이 갈림.`,
       `${lens} 변수가 지금 쟁점임.`,
+      `${lens} 보면 답이 갈림.`,
     ],
     seed,
   );
@@ -603,7 +603,7 @@ export async function generateSmartTurn(
 ): Promise<string> {
   const sources = await getDebateSources(ctx);
 
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
     const content = composeByMode(
       ctx,
       personaId,
@@ -614,6 +614,24 @@ export async function generateSmartTurn(
       attempt,
     );
 
+    if (
+      validateResponse(ctx, personaId, content).ok &&
+      acceptDebateTurn(history, personaId, content, ctx)
+    ) {
+      return content;
+    }
+  }
+
+  for (let attempt = 8; attempt < 12; attempt++) {
+    const content = composeByMode(
+      ctx,
+      personaId,
+      history,
+      round,
+      EMPTY_SOURCES,
+      debateId,
+      attempt,
+    );
     if (
       validateResponse(ctx, personaId, content).ok &&
       acceptDebateTurn(history, personaId, content, ctx)

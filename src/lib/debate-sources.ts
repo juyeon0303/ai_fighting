@@ -1,5 +1,5 @@
 import type { DebateMessage, PersonaId } from "./types";
-import type { TopicContext } from "./topic-context";
+import type { TopicContext, TopicDomain } from "./topic-context";
 import {
   factViolatesGroundTruth,
   matchGroundTruth,
@@ -7,9 +7,12 @@ import {
   wikiTitleForEntity,
 } from "./domain-ground-truth";
 import {
+  factRelatesToEntity,
   getWikiContext,
+  isUnusableWikiFact,
   pickFreshWikiFact,
   pickSeeded,
+  wikiRelatesToQuery,
   type WikiContext,
 } from "./wiki-context";
 
@@ -20,12 +23,22 @@ export interface DebateSources {
 }
 
 async function wikiForSide(name: string): Promise<WikiContext | null> {
+  const tries = new Set<string>();
+  tries.add(name);
   const title = wikiTitleForEntity(name);
-  if (title) {
-    const byTitle = await getWikiContext(title);
-    if (byTitle) return byTitle;
+  if (title) tries.add(title);
+
+  const lower = name.toLowerCase();
+  if (/^[a-z]{2,12}$/.test(lower)) {
+    tries.add(`${name}.js`);
+    tries.add(`${name} (JavaScript)`);
   }
-  return getWikiContext(name);
+
+  for (const query of tries) {
+    const wiki = await getWikiContext(query);
+    if (wiki && wikiRelatesToQuery(name, wiki)) return wiki;
+  }
+  return null;
 }
 
 export async function getDebateSources(
@@ -62,16 +75,29 @@ function pickWikiCue(
   seed: number,
 ): string | null {
   if (!wiki) return null;
-  for (let i = 0; i < 6; i++) {
-    const fact = pickFreshWikiFact(wiki, history, seed + i);
+  for (let i = 0; i < 8; i++) {
+    const fact = pickFreshWikiFact(wiki, history, seed + i, entityName);
     if (!fact) continue;
     if (factViolatesGroundTruth(entityName, fact)) continue;
+    if (!factRelatesToEntity(entityName, fact, wiki)) continue;
+    if (isUnusableWikiFact(fact)) continue;
     return fact;
   }
   return null;
 }
 
-/** API·엔진 공통 — 검증 팩트 1개 (위키 직접 인용 금지) */
+function pickCueForEntity(
+  name: string,
+  wiki: WikiContext | null,
+  history: DebateMessage[],
+  seed: number,
+): string | null {
+  const grounded = pickGroundTruthCue(name, history, seed);
+  if (grounded) return grounded;
+  return pickWikiCue(wiki, name, history, seed);
+}
+
+/** API·엔진 공통 — 검증 팩트 1개 (모든 토론 모드) */
 export function factCueForPrompt(
   sources: DebateSources,
   ctx: TopicContext,
@@ -81,32 +107,71 @@ export function factCueForPrompt(
 ): string | null {
   if (personaId === "moderator") return null;
 
-  const seed = round * 11 + (personaId === "pro" ? 1 : personaId === "con" ? 2 : 3);
-  const sideName = sideNameForPersona(ctx, personaId);
+  const seed =
+    round * 11 + (personaId === "pro" ? 1 : personaId === "con" ? 2 : 3);
 
-  if (sideName) {
-    const grounded = pickGroundTruthCue(sideName, history, seed);
-    if (grounded) return grounded;
-
-    const wiki =
-      personaId === "pro" ? sources.sideA : sources.sideB;
-    const wikiCue = pickWikiCue(wiki, sideName, history, seed);
-    if (wikiCue) return wikiCue;
-    return pickGroundTruthCue(sideName, history, seed + 3);
+  if (ctx.sideA && ctx.sideB) {
+    if (personaId === "pro") {
+      return pickCueForEntity(ctx.sideA, sources.sideA, history, seed);
+    }
+    if (personaId === "con") {
+      return pickCueForEntity(ctx.sideB, sources.sideB, history, seed);
+    }
+    if (personaId === "neutral") {
+      const a = pickCueForEntity(ctx.sideA, sources.sideA, history, seed);
+      const b = pickCueForEntity(ctx.sideB, sources.sideB, history, seed + 1);
+      if (a && b) return `${ctx.sideA}:${a}|${ctx.sideB}:${b}`;
+      if (a) return `${ctx.sideA}:${a}`;
+      if (b) return `${ctx.sideB}:${b}`;
+      return null;
+    }
   }
 
-  if (personaId === "neutral" && ctx.sideA && ctx.sideB) {
-    const a = pickGroundTruthCue(ctx.sideA, history, seed);
-    const b = pickGroundTruthCue(ctx.sideB, history, seed + 1);
-    if (a && b) return `${ctx.sideA}:${a}|${ctx.sideB}:${b}`;
-    if (a) return a;
-    if (b) return b;
-  }
+  if (personaId === "neutral") return null;
 
-  return null;
+  const topicKey = ctx.displayTopic || ctx.topic;
+  return pickWikiCue(sources.primary, topicKey, history, seed);
 }
 
-/** 무료 엔진 — 팩트를 말투에 자연스럽게 녹임 (위키·자료상 금지) */
+const DOMAIN_WEAVE: Record<TopicDomain, string[]> = {
+  esports: [
+    "{side} 기준 {f}.",
+    "요즘 {f} 변수가 큼.",
+    "{f} — 경기 흐름 보면 이게 핵심임.",
+  ],
+  food: [
+    "솔직히 {f}.",
+    "먹어보면 {f} 차이 남.",
+    "{f} — 입맛·상황에 따라 갈림.",
+  ],
+  tech: [
+    "써보면 {f}.",
+    "실무에서 {f} 체감됨.",
+    "{f}가 지금 변수임.",
+  ],
+  entertainment: [
+    "보면 {f}.",
+    "소비할 때 {f} 느낌임.",
+    "{f} — 취향 갈림 포인트임.",
+  ],
+  social: [
+    "현실적으로 {f}.",
+    "사람마다 {f} 체감이 다름.",
+    "{f} — 조건 따라 답이 바뀜.",
+  ],
+  science: [
+    "근거 보면 {f}.",
+    "설명하려면 {f}부터 봐야 함.",
+    "{f} — 여기서 갈림.",
+  ],
+  general: [
+    "{f} 정도로 보임.",
+    "{f} — 이게 지금 핵심이야.",
+    "변수는 {f} 쪽임.",
+  ],
+};
+
+/** 무료 엔진 — 팩트를 말투에 자연스럽게 녹임 */
 export function weaveFactIntoSpeech(
   fact: string,
   ctx: TopicContext,
@@ -114,17 +179,20 @@ export function weaveFactIntoSpeech(
   seed: number,
 ): string {
   const side = sideNameForPersona(ctx, personaId);
-  const templates =
-    personaId === "neutral"
-      ? [
-          `${fact} — 비교 기준을 여기에 둬야 함.`,
-          `변수는 ${fact} 쪽이야.`,
-        ]
-      : [
-          side ? `${side} 보면 ${fact} 정도로 보임.` : `${fact} 정도로 보임.`,
-          `${fact} — 이게 지금 핵심이야.`,
-          `요즘은 ${fact} 변수가 크지.`,
-        ];
+  const templates = DOMAIN_WEAVE[ctx.domain].map((t) =>
+    t.replace("{side}", side ?? "이쪽").replace("{f}", fact),
+  );
+
+  if (personaId === "neutral") {
+    return pickSeeded(
+      [
+        `${fact} — 비교 기준을 여기에 둬야 함.`,
+        `양쪽 보면 ${fact} 변수가 갈림.`,
+      ],
+      seed,
+    );
+  }
+
   return pickSeeded(templates, seed);
 }
 
@@ -156,6 +224,11 @@ export function speechFactLine(
         seed,
       );
     }
+  }
+
+  if (personaId === "neutral" && cue.includes(":") && ctx.sideA && ctx.sideB) {
+    const [label, fact] = [cue.split(":")[0], cue.split(":").slice(1).join(":")];
+    return `${label} 쪽은 ${fact} 정도로 보임.`;
   }
 
   return weaveFactIntoSpeech(cue, ctx, personaId, seed);

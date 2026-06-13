@@ -1,4 +1,5 @@
 import type { DebateMessage } from "./types";
+import { factViolatesGroundTruth } from "./domain-ground-truth";
 
 export interface WikiContext {
   title: string;
@@ -35,7 +36,76 @@ function parseFacts(extract: string): string[] {
     .split(/(?<=[.!?。])\s+/)
     .map((s) => s.replace(/\s+/g, " ").trim())
     .filter((s) => s.length >= 12 && s.length <= 140)
-    .slice(0, 6);
+    .slice(0, 8);
+}
+
+function normToken(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, "");
+}
+
+/** 동음이의·목록 문서 거부 */
+export function isDisambiguationWiki(wiki: WikiContext): boolean {
+  const blob = `${wiki.title} ${wiki.extract}`;
+  return (
+    /동음이의|may refer to|다음 사람|를 가리킨다|다음을 가리킨다|이 목록은|둘 이상|여러 명|는 다음/.test(
+      blob,
+    ) || wiki.title.includes("동음이의")
+  );
+}
+
+/** 위키 결과가 검색어와 관련 있는지 */
+export function wikiRelatesToQuery(query: string, wiki: WikiContext): boolean {
+  if (isDisambiguationWiki(wiki)) return false;
+
+  const tokens = query.match(/[가-힣A-Za-z0-9]{2,}/g) ?? [];
+  if (tokens.length === 0) return wiki.facts.length > 0 || wiki.extract.length >= 20;
+
+  const blob = normToken(`${wiki.title} ${wiki.extract}`);
+  const first = tokens[0];
+  if (first) {
+    const primary = normToken(first);
+    if (primary.length >= 2 && blob.includes(primary)) return true;
+  }
+
+  return tokens.some((t) => {
+    const n = normToken(t);
+    return n.length >= 2 && blob.includes(n);
+  });
+}
+
+/** 복합 주제(치킨 vs 피자 등) — 한쪽이라도 맞으면 OK */
+export function wikiRelatesToTopicQuery(
+  query: string,
+  wiki: WikiContext,
+): boolean {
+  const parts = query
+    .split(/\s*(?:vs\.?|VS|대|\/|·|\|)\s*/i)
+    .map((p) => p.trim())
+    .filter((p) => p.length >= 2);
+  if (parts.length >= 2) {
+    return parts.some((p) => wikiRelatesToQuery(p, wiki));
+  }
+  return wikiRelatesToQuery(query, wiki);
+}
+
+/** 백과사전·정의문 — 토론에 부적합 */
+export function isUnusableWikiFact(fact: string): boolean {
+  if (fact.length > 52) return true;
+  return /영어:|이탈리아어|문화어|라틴어|IPA:|동음이의|다음 사람|를 가리킨다|문장:\s*[A-Za-z]|\([A-Za-z]{3,}[^)]{8,}\)/.test(
+    fact,
+  );
+}
+
+/** 팩트가 해당 대상과 관련 있는지 */
+export function factRelatesToEntity(
+  entityName: string,
+  fact: string,
+  wiki?: WikiContext | null,
+): boolean {
+  const tokens = entityName.match(/[가-힣A-Za-z0-9]{2,}/g) ?? [];
+  const blob = normToken(`${wiki?.title ?? ""} ${fact}`);
+  if (tokens.length === 0) return true;
+  return tokens.some((t) => blob.includes(normToken(t)));
 }
 
 async function fetchJson<T>(url: string): Promise<T | null> {
@@ -123,8 +193,9 @@ async function fetchWikiForLang(
     if (!title) continue;
 
     const summary = await fetchWikiSummary(lang, title);
-    if (summary && summary.facts.length > 0) return summary;
-    if (summary) return summary;
+    if (!summary) continue;
+    if (!wikiRelatesToTopicQuery(query, summary)) continue;
+    return summary;
   }
   return null;
 }
@@ -134,9 +205,12 @@ export async function getWikiContext(topic: string): Promise<WikiContext | null>
   if (cache.has(key)) return cache.get(key) ?? null;
 
   const queries = buildSearchQueries(topic);
-  const wiki =
-    (await fetchWikiForLang("ko", queries)) ??
-    (await fetchWikiForLang("en", queries));
+  const hasHangul = /[가-힣]/.test(topic);
+
+  const wiki = hasHangul
+    ? await fetchWikiForLang("ko", queries)
+    : ((await fetchWikiForLang("ko", queries)) ??
+      (await fetchWikiForLang("en", queries)));
 
   cache.set(key, wiki);
   return wiki;
@@ -172,16 +246,22 @@ export function pickFreshWikiFact(
   wiki: WikiContext,
   history: DebateMessage[],
   seed: number,
+  entityName?: string,
 ): string | null {
   if (wiki.facts.length === 0) {
     const short = wikiSnippet(wiki.extract, 50);
-    return factAlreadyUsed(short, history) ? null : short;
+    if (factAlreadyUsed(short, history)) return null;
+    if (entityName && !factRelatesToEntity(entityName, short, wiki)) return null;
+    if (isUnusableWikiFact(short)) return null;
+    return short;
   }
-  for (let i = 0; i < Math.min(wiki.facts.length, 6); i++) {
+  for (let i = 0; i < Math.min(wiki.facts.length, 8); i++) {
     const fact = pickSeeded(wiki.facts, seed + i);
-    if (!factAlreadyUsed(fact, history)) {
-      return wikiSnippet(fact, 48);
-    }
+    if (factAlreadyUsed(fact, history)) continue;
+    if (entityName && !factRelatesToEntity(entityName, fact, wiki)) continue;
+    if (entityName && factViolatesGroundTruth(entityName, fact)) continue;
+    if (isUnusableWikiFact(fact)) continue;
+    return wikiSnippet(fact, 40);
   }
   return null;
 }

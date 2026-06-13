@@ -1,5 +1,6 @@
 import type { DebateMessage } from "./types";
 
+/** 선택적 검증 DB — 없으면 위키+렌즈로 동작 */
 export interface GroundTruthEntity {
   /** 표시 이름 */
   label: string;
