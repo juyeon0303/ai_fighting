@@ -1,0 +1,26 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Dashboard → New → Blueprint → 이 repo 연결
+
+services:
+  - type: web
+    name: ai-debate-arena
+    runtime: node
+    region: singapore # 한국에서 가장 가까운 리전 중 하나 (oregon, frankfurt 등으로 변경 가능)
+    plan: starter # 24/7 백그라운드 토론에 필요. free 플랜은 15분 미사용 시 슬립
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: OPENAI_API_KEY
+        sync: false # Render 대시보드에서 직접 입력
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+    disk:
+      name: debate-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1

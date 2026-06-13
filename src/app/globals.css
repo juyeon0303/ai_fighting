@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0c0a14;
+  --foreground: #ededed;
 }
 
 @theme inline {
@@ -12,15 +12,141 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Message entrance */
+@keyframes msg-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.msg-enter {
+  animation: msg-enter 0.45s ease-out both;
+}
+
+@keyframes msg-slide-right {
+  from { transform: translateX(16px); }
+  to { transform: translateX(0); }
+}
+
+@keyframes msg-slide-left {
+  from { transform: translateX(-16px); }
+  to { transform: translateX(0); }
+}
+
+.msg-slide-right.msg-enter {
+  animation: msg-enter 0.45s ease-out both, msg-slide-right 0.4s ease-out both;
+}
+
+.msg-slide-left.msg-enter {
+  animation: msg-enter 0.45s ease-out both, msg-slide-left 0.4s ease-out both;
+}
+
+@keyframes msg-clash-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+.msg-clash.msg-enter {
+  animation: msg-enter 0.45s ease-out both, msg-clash-shake 0.35s ease-out 0.1s both;
+}
+
+@keyframes avatar-pop {
+  0% { transform: scale(0.8); }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+.avatar-pop {
+  animation: avatar-pop 0.4s ease-out both;
+}
+
+/* Arena ambient effects */
+@keyframes arena-flash {
+  0% { opacity: 0.6; }
+  100% { opacity: 0; }
+}
+
+.arena-flash {
+  animation: arena-flash 0.5s ease-out both;
+}
+
+@keyframes arena-clash-ripple {
+  0% {
+    opacity: 0.4;
+    background: radial-gradient(circle at 50% 40%, rgba(239, 68, 68, 0.15) 0%, transparent 50%);
+  }
+  100% {
+    opacity: 0;
+    background: radial-gradient(circle at 50% 40%, rgba(239, 68, 68, 0) 0%, transparent 60%);
+  }
+}
+
+.arena-clash {
+  animation: arena-clash-ripple 0.6s ease-out both;
+}
+
+/* Timeline highlight */
+@keyframes timeline-highlight {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+.timeline-highlight {
+  animation: timeline-highlight 0.6s ease-out both;
+}
+
+/* Report panel */
+@keyframes report-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.report-overlay {
+  animation: report-overlay-in 0.3s ease-out both;
+}
+
+@keyframes report-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.report-panel {
+  animation: report-panel-in 0.4s ease-out both;
+}
+
+/* Timeline item entrance */
+@keyframes timeline-item-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.timeline-item {
+  animation: timeline-item-in 0.4s ease-out both;
 }
