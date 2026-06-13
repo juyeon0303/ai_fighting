@@ -3,6 +3,11 @@ import type { DebateMode, TopicContext, TopicDomain } from "./topic-context";
 import { getPersonaStance } from "./topic-context";
 import { DEBATE_STYLE, DEBATE_BAD_EXAMPLES } from "./debate-style";
 import { compactHistory } from "./debate-turn-budget";
+import {
+  acceptDebateTurn,
+  bannedPhraseReminder,
+  roundFocusAngle,
+} from "./debate-quality";
 
 const BANNED_VAGUE = [
   "양측 모두",
@@ -41,6 +46,13 @@ const BANNED_VAGUE = [
   "비교 기준이 애매하다",
   "논리에는 한계가 있다",
   "에서 강점이 있고",
+  "유일무이",
+  "입증",
+  "견인",
+  "정교한",
+  "대변한다",
+  "상회한다",
+  "마땅하다",
 ];
 
 const FORMAL_PATTERN =
@@ -209,10 +221,23 @@ export function passesMinimumQuality(
 function personaHint(
   personaId: PersonaId,
   hints: (typeof DOMAIN_HINTS)[TopicDomain],
+  round: number,
 ): string {
-  if (personaId === "pro") return hints.pro.slice(0, 2).join("/");
-  if (personaId === "con") return hints.con.slice(0, 2).join("/");
-  return hints.neutral.slice(0, 2).join("/");
+  const pool =
+    personaId === "pro"
+      ? hints.pro
+      : personaId === "con"
+        ? hints.con
+        : hints.neutral;
+  return roundFocusAngle(personaId, pool, round);
+}
+
+function rebuttalRule(personaId: PersonaId, round: number): string {
+  if (round <= 1) return "";
+  if (personaId === "neutral") {
+    return "중립:양쪽요약금지.쟁점한줄만.";
+  }
+  return "상대방금인용후반박필수.";
 }
 
 export function buildDebatePrompt(
@@ -233,21 +258,22 @@ export function buildDebatePrompt(
     );
 
   const oppLine = lastOpp
-    ? `상대방금:${truncateSnippet(lastOpp.content, 70)}`
+    ? `상대방금:${truncateSnippet(lastOpp.content, 80)}`
     : "";
 
   return [
     `주제:${ctx.topic}`,
-    `쟁점:${ctx.debateQuestion}`,
     `역할:${stance}`,
     `R${round}`,
     modeRules(ctx),
-    `각도:${personaHint(personaId, hints)}`,
+    `이번각도:${personaHint(personaId, hints, round)}`,
     `직전:${compactHistory(history)}`,
+    `이미씀금지:${bannedPhraseReminder(history)}`,
     oppLine,
+    rebuttalRule(personaId, round),
     DEBATE_STYLE,
     `금지:${DEBATE_BAD_EXAMPLES}`,
-    "지금 1~2문장만. 순수 텍스트.",
+    "예:나는 페이커 쪽인데 월드 성적이 더 낫다 봄.",
   ]
     .filter(Boolean)
     .join("\n");

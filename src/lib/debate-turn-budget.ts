@@ -46,7 +46,7 @@ export function compactHistory(history: DebateMessage[]): string {
 /** API가 길게 써도 1~2문장으로 자르기 (문장 경계 우선) */
 export function clampTurnContent(content: string, personaId: PersonaId): string {
   const maxChars =
-    personaId === "neutral" || personaId === "moderator" ? 200 : 160;
+    personaId === "neutral" || personaId === "moderator" ? 150 : 120;
   const normalized = content.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxChars) return normalized;
 

@@ -7,6 +7,7 @@ import {
   passesMinimumQuality,
   validateResponse,
 } from "./debate-content";
+import { acceptDebateTurn } from "./debate-quality";
 import type { PersonaLlmRuntime } from "./debate-llm-config";
 import { requestGeminiTurn } from "./gemini";
 import { DEFAULT_OPENAI_MODEL } from "./openai-models";
@@ -17,7 +18,8 @@ import {
   softenFormalTone,
 } from "./debate-turn-budget";
 
-const SYSTEM = "한국어 토론. 1~2문장. 평서체. 주제 핵심만.";
+const SYSTEM =
+  "한국어 토론. 친구 말투. 1~2문장. 뉴스·논문체 금지. 같은 말 반복 금지.";
 
 export type LlmStopReason = "auth" | "quota" | null;
 
@@ -55,23 +57,15 @@ function mapApiError(error: unknown): LlmStopReason {
 function polishApiTurn(
   ctx: TopicContext,
   personaId: PersonaId,
+  history: DebateMessage[],
   raw: string,
 ): string | null {
   const softened = softenFormalTone(raw);
   const clamped = clampTurnContent(softened, personaId);
   if (!passesMinimumQuality(ctx, personaId, clamped)) return null;
-  if (hasBannedGeneric(clamped)) return null;
+  if (!acceptDebateTurn(history, personaId, clamped)) return null;
+  if (!validateResponse(ctx, personaId, clamped).ok) return null;
   return clamped;
-}
-
-function hasBannedGeneric(text: string): boolean {
-  const banned = [
-    "양측 모두",
-    "둘러싼 토론",
-    "관점으로 말",
-    "점진적 도입",
-  ];
-  return banned.some((b) => text.includes(b));
 }
 
 async function requestOpenAiTurn(
@@ -93,7 +87,7 @@ async function requestOpenAiTurn(
         },
       ],
       max_tokens: maxOutputTokens(personaId),
-      temperature: 0.85,
+      temperature: 0.92,
     });
 
     return {
@@ -145,8 +139,8 @@ async function generateWithProvider(
   if (result.stopReason) {
     lastStopReason = result.stopReason;
   } else if (result.content) {
-    const polished = polishApiTurn(ctx, personaId, result.content);
-    if (polished && validateResponse(ctx, personaId, polished).ok) {
+    const polished = polishApiTurn(ctx, personaId, history, result.content);
+    if (polished) {
       return {
         content: polished,
         tokensUsed: totalTokens,
@@ -154,14 +148,10 @@ async function generateWithProvider(
         stopReason: null,
       };
     }
-    if (polished && passesMinimumQuality(ctx, personaId, polished)) {
-      return {
-        content: polished,
-        tokensUsed: totalTokens,
-        source,
-        stopReason: null,
-      };
-    }
+    console.warn(
+      `[llm] ${source} output rejected (repetitive/essay) — smart engine`,
+      personaId,
+    );
   }
 
   const fallback = await generateMockTurn(
@@ -175,7 +165,7 @@ async function generateWithProvider(
   return {
     content: clampTurnContent(fallback, personaId),
     tokensUsed: totalTokens,
-    source: totalTokens > 0 ? source : "engine",
+    source: "engine",
     stopReason: lastStopReason,
   };
 }
