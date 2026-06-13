@@ -55,7 +55,7 @@ export async function verifyUserApiKeys(
     );
 
     if (result.stopReason === "auth") {
-      return "Gemini API 키가 거부되었습니다. aistudio.google.com에서 키를 다시 발급하세요.";
+      return "Gemini API 키가 거부되었습니다. aistudio.google.com → API Keys에서 새 키를 만들고, 앞뒤 공백 없이 전체를 붙여넣으세요. (AIza 또는 AQ. 로 시작)";
     }
     if (result.stopReason === "quota") {
       return "Gemini API 한도가 초과되었습니다.";

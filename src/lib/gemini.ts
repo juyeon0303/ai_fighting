@@ -33,10 +33,9 @@ function modelCandidates(preferred: string): string[] {
   ];
 }
 
-function authModes(apiKey: string): Array<"header" | "query" | "bearer"> {
-  return apiKey.trim().startsWith("AQ.")
-    ? ["bearer", "header", "query"]
-    : ["header", "query"];
+function authModes(apiKey: string): Array<"header" | "query"> {
+  // Google 공식: x-goog-api-key 헤더만 사용. Bearer는 AQ./AIza 모두 거부될 수 있음.
+  return ["header", "query"];
 }
 
 function buildGenerationConfig(model: string): Record<string, unknown> {
@@ -65,7 +64,7 @@ async function callGeminiOnce(
   apiKey: string,
   model: string,
   body: object,
-  auth: "header" | "query" | "bearer",
+  auth: "header" | "query",
 ): Promise<{ ok: boolean; status: number; data?: unknown; errorText?: string }> {
   const base = `${GEMINI_BASE}/${model}:generateContent`;
   const url =
@@ -78,8 +77,6 @@ async function callGeminiOnce(
   };
   if (auth === "header") {
     headers["x-goog-api-key"] = apiKey.trim();
-  } else if (auth === "bearer") {
-    headers.Authorization = `Bearer ${apiKey.trim()}`;
   }
 
   const res = await fetchWithTimeout(url, {
@@ -109,6 +106,8 @@ export async function requestGeminiTurn(
 }> {
   let lastStatus = 0;
   let lastError = "";
+  let sawAuthError = false;
+  let sawQuotaError = false;
 
   for (const candidateModel of modelCandidates(model)) {
     const body = {
@@ -134,9 +133,8 @@ export async function requestGeminiTurn(
             `[gemini] ${candidateModel} (${auth}) → ${result.status}`,
             lastError,
           );
-          if (stop) {
-            return { content: null, tokensUsed: 0, stopReason: stop };
-          }
+          if (stop === "auth") sawAuthError = true;
+          if (stop === "quota") sawQuotaError = true;
           continue;
         }
 
@@ -169,6 +167,13 @@ export async function requestGeminiTurn(
         console.warn(`[gemini] ${candidateModel} (${auth}) failed:`, lastError);
       }
     }
+  }
+
+  if (sawQuotaError) {
+    return { content: null, tokensUsed: 0, stopReason: "quota" };
+  }
+  if (sawAuthError) {
+    return { content: null, tokensUsed: 0, stopReason: "auth" };
   }
 
   if (lastStatus) {
