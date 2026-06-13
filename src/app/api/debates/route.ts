@@ -10,6 +10,7 @@ import { prefetchWikiContext } from "@/lib/wiki-context";
 import type { ApiLayout } from "@/lib/types";
 import { normalizeGeminiModel } from "@/lib/gemini-models";
 import { normalizeOpenaiModel } from "@/lib/openai-models";
+import { verifyUserApiKeys } from "@/lib/verify-user-api";
 
 export async function GET() {
   const debates = await listDebates();
@@ -37,6 +38,10 @@ export async function POST(request: Request) {
     const validationError = validateUserApiInput(input);
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
+    }
+    const verifyError = await verifyUserApiKeys(input);
+    if (verifyError) {
+      return NextResponse.json({ error: verifyError }, { status: 400 });
     }
     userApi = input;
   }

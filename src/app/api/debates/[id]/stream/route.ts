@@ -5,7 +5,7 @@ import {
   getTimelineEvents,
 } from "@/lib/db";
 import { sanitizeDebateForClient } from "@/lib/debate-llm-config";
-import { debateEvents, kickstartDebate, startDebateWorker } from "@/lib/debate-engine";
+import { debateEvents, startDebateWorker } from "@/lib/debate-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -43,12 +43,6 @@ export async function GET(
         timeline,
         report,
       });
-
-      if (existingMessages.length === 0 && debate.status === "active") {
-        kickstartDebate(id).catch((err) =>
-          console.error(`[stream] kickstart ${id}:`, err),
-        );
-      }
 
       const onMessage = (payload: { debateId: string; message: unknown }) => {
         if (payload.debateId === id) {

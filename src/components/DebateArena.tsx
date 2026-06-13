@@ -109,8 +109,6 @@ export function DebateArena({ debateId }: DebateArenaProps) {
             return next;
           });
         }, 800);
-      } else {
-        setMessages((prev) => [...prev, msg]);
       }
     });
 

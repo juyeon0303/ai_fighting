@@ -248,12 +248,19 @@ function composeVersus(
   const opp = lastOpponentMessage(personaId, history);
 
   if (personaId === "moderator") {
+    if (round === 1) {
+      const openers = [
+        `${a}랑 ${b}, 뭐가 나은지 각자 근거 들고 와.`,
+        `${a} vs ${b} — 쟁점은 ${pickSeeded(h.pro, seed)} vs ${pickSeeded(h.con, seed)} 정도로 보면 됨.`,
+        wiki ? moderatorWikiFlavor(wiki, ctx, seed) : null,
+      ].filter(Boolean) as string[];
+      return pickSeeded(openers, seed);
+    }
+
     const lines = [
-      `${a}랑 ${b}, 뭐가 나은지 각자 근거 들고 와.`,
       `지금까지 말 보면 기준이 갈리는데, ${pickSeeded(h.neutral, seed)} 쪽으로 정리해 보자.`,
-      round === 1 && wiki
-        ? moderatorWikiFlavor(wiki, ctx, seed)
-        : `상대 말 한 줄 짚고 반박해 봐.`,
+      `상대 말 한 줄 짚고 반박해 봐.`,
+      wiki ? moderatorWikiFlavor(wiki, ctx, seed) : null,
       `${a} vs ${b} — 쟁점은 ${pickSeeded(h.pro, seed)} vs ${pickSeeded(h.con, seed)} 정도로 보면 됨.`,
     ].filter(Boolean) as string[];
     return pickSeeded(lines, seed);

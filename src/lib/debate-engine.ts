@@ -27,7 +27,7 @@ import type { DebateMessage } from "./types";
 export const debateEvents = new EventEmitter();
 debateEvents.setMaxListeners(100);
 
-const processing = new Set<string>();
+const turnInflight = new Map<string, Promise<DebateMessage | null>>();
 const finalizing = new Set<string>();
 let workerStarted = false;
 let workerTimer: ReturnType<typeof setInterval> | null = null;
@@ -116,10 +116,9 @@ async function endDebate(debateId: string, endReason?: string): Promise<void> {
   await finalizeDebate(debateId);
 }
 
-async function processDebateTurn(debateId: string): Promise<DebateMessage | null> {
-  if (processing.has(debateId)) return null;
-  processing.add(debateId);
-
+async function processDebateTurnInner(
+  debateId: string,
+): Promise<DebateMessage | null> {
   try {
     const debate = await getDebate(debateId);
     if (!debate || debate.status !== "active") return null;
@@ -130,14 +129,15 @@ async function processDebateTurn(debateId: string): Promise<DebateMessage | null
     }
 
     const messages = await getDebateMessages(debateId);
-    const round = Math.floor(messages.length / 4) + 1;
+    const messageCountAtStart = messages.length;
+    const round = Math.floor(messageCountAtStart / 4) + 1;
 
     if (round > debate.maxRounds) {
       await endDebate(debateId, "max_rounds");
       return null;
     }
 
-    const personaId = getNextPersona(round, messages.length);
+    const personaId = getNextPersona(round, messageCountAtStart);
     const runtime = resolvePersonaLlmRuntime(debate, personaId);
     let turn = await generateDebateTurn(
       debate.topic,
@@ -166,6 +166,22 @@ async function processDebateTurn(debateId: string): Promise<DebateMessage | null
 
     if (!turn.content?.trim()) {
       await endDebate(debateId, "empty_turn");
+      return null;
+    }
+
+    const latest = await getDebateMessages(debateId);
+    if (latest.length !== messageCountAtStart) {
+      console.warn(
+        `[debate ${debateId}] stale turn skipped (${messageCountAtStart} → ${latest.length})`,
+      );
+      return null;
+    }
+
+    const expectedPersona = getNextPersona(
+      Math.floor(messageCountAtStart / 4) + 1,
+      messageCountAtStart,
+    );
+    if (expectedPersona !== personaId) {
       return null;
     }
 
@@ -216,8 +232,21 @@ async function processDebateTurn(debateId: string): Promise<DebateMessage | null
   } catch (error) {
     console.error(`[debate ${debateId}] turn failed:`, error);
     return null;
+  }
+}
+
+export async function processDebateTurn(
+  debateId: string,
+): Promise<DebateMessage | null> {
+  const inflight = turnInflight.get(debateId);
+  if (inflight) return inflight;
+
+  const promise = processDebateTurnInner(debateId);
+  turnInflight.set(debateId, promise);
+  try {
+    return await promise;
   } finally {
-    processing.delete(debateId);
+    turnInflight.delete(debateId);
   }
 }
 
