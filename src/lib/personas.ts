@@ -1,5 +1,9 @@
 import type { Persona, PersonaId } from "./types";
 
+export const DEBATE_TURN_ORDER: PersonaId[] = ["pro", "con", "neutral"];
+export const TURNS_PER_ROUND = DEBATE_TURN_ORDER.length;
+export const DEFAULT_TURN_INTERVAL_MS = 4_000;
+
 export const PERSONAS: Record<PersonaId, Persona> = {
   pro: {
     id: "pro",
@@ -31,12 +35,8 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
 };
 
-const TURN_ORDER: PersonaId[] = ["moderator", "pro", "con", "neutral"];
-
-export function getNextPersona(round: number, messageCount: number): PersonaId {
-  if (messageCount === 0) return "moderator";
-  const index = messageCount % TURN_ORDER.length;
-  return TURN_ORDER[index];
+export function getNextPersona(_round: number, messageCount: number): PersonaId {
+  return DEBATE_TURN_ORDER[messageCount % TURNS_PER_ROUND];
 }
 
 export function getPersona(id: PersonaId): Persona {

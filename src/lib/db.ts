@@ -5,6 +5,7 @@ import { encryptApiKey } from "./api-key-crypto";
 import type { UserApiInput } from "./debate-llm-config";
 import { validateUserApiInput } from "./debate-llm-config";
 import { normalizeGeminiModel } from "./gemini-models";
+import { DEFAULT_TURN_INTERVAL_MS } from "./personas";
 import { normalizeOpenaiModel } from "./openai-models";
 import { getSupabase, isSupabaseEnabled } from "./supabase";
 import type {
@@ -304,7 +305,7 @@ export async function createDebate(
         status: "active",
         round: 0,
         max_rounds: options?.maxRounds ?? 20,
-        turn_interval_ms: options?.turnIntervalMs ?? 8000,
+        turn_interval_ms: options?.turnIntervalMs ?? DEFAULT_TURN_INTERVAL_MS,
         report_status: "none",
         end_reason: null,
         ...llmFields,
@@ -324,7 +325,7 @@ export async function createDebate(
     status: "active",
     round: 0,
     maxRounds: options?.maxRounds ?? 20,
-    turnIntervalMs: options?.turnIntervalMs ?? 8000,
+    turnIntervalMs: options?.turnIntervalMs ?? DEFAULT_TURN_INTERVAL_MS,
     lastTurnAt: null,
     reportStatus: "none",
     llmMode: hasUserApi ? "user_api" : "free",

@@ -223,7 +223,7 @@ export function ApiKeySetupPanel({
 
           {layout === "gpt_vs_gemini" && (
             <div className="rounded-xl border border-violet-500/20 bg-violet-500/8 px-3 py-2 text-xs text-white/60">
-              <span className="text-violet-300">GPT</span>: 사회자·찬성 ·{" "}
+              <span className="text-violet-300">GPT</span>: 찬성 ·{" "}
               <span className="text-blue-300">Gemini</span>: 반대·중립 — 서로
               다른 AI가 맞붙습니다
             </div>

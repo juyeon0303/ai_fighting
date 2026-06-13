@@ -8,7 +8,7 @@ import type {
   PersonaId,
   TimelineEvent,
 } from "@/lib/types";
-import { PERSONAS } from "@/lib/personas";
+import { DEBATE_TURN_ORDER, PERSONAS } from "@/lib/personas";
 import { parseTopic, getPersonaStance, getModeLabel } from "@/lib/topic-context";
 import {
   layoutLabel,
@@ -195,9 +195,8 @@ export function DebateArena({ debateId }: DebateArenaProps) {
   }
 
   const nextPersona: PersonaId | undefined = (() => {
-    if (messages.length === 0) return "moderator";
-    const order: PersonaId[] = ["moderator", "pro", "con", "neutral"];
-    return order[messages.length % 4];
+    if (status !== "active") return undefined;
+    return DEBATE_TURN_ORDER[messages.length % DEBATE_TURN_ORDER.length];
   })();
 
   const topicCtx = topic ? parseTopic(topic) : null;
@@ -330,11 +329,11 @@ export function DebateArena({ debateId }: DebateArenaProps) {
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
-            {(Object.keys(PERSONAS) as PersonaId[]).map((id) => {
+            {DEBATE_TURN_ORDER.map((id) => {
               const p = PERSONAS[id];
               const isActive = lastPersonaId === id && status === "active";
               const label =
-                topicCtx && (id === "pro" || id === "con" || id === "moderator" || id === "neutral")
+                topicCtx && (id === "pro" || id === "con" || id === "neutral")
                   ? getPersonaStance(id, topicCtx).split("—")[0].trim()
                   : p.name;
               const providerBadge =

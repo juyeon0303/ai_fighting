@@ -69,7 +69,7 @@ async function requestOpenAiTurn(
           content: buildDebatePrompt(ctx, personaId, history, round) + retryHint,
         },
       ],
-      max_tokens: 300,
+      max_tokens: 220,
       temperature: 0.92,
     });
 
@@ -99,7 +99,7 @@ async function generateWithProvider(
   let lastStopReason: LlmStopReason = null;
   const source = runtime.provider === "gemini" ? "gemini" : "openai";
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 1; attempt++) {
     const prompt =
       buildDebatePrompt(ctx, personaId, history, round) +
       (attempt === 0 ? "" : RETRY_HINT);

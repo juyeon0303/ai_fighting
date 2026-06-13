@@ -1,4 +1,5 @@
 import type { ApiLayout } from "./types";
+import { TURNS_PER_ROUND } from "./personas";
 
 /** 토론 1턴(발언 1개) 평균 토큰 — 히스토리+프롬프트+응답 합산 */
 const TOKENS_PER_TURN: Record<ApiLayout, number> = {
@@ -27,11 +28,11 @@ export interface TokenBudgetGuide {
 export function estimateTokenBudget(
   budget: number,
   layout: ApiLayout = "openai_only",
-  turnIntervalMs = 8000,
+  turnIntervalMs = 4_000,
 ): TokenBudgetGuide {
   const tokensPerTurn = TOKENS_PER_TURN[layout];
   const estimatedTurns = Math.max(1, Math.floor(budget / tokensPerTurn));
-  const estimatedRounds = Math.max(1, Math.floor(estimatedTurns / 4));
+  const estimatedRounds = Math.max(1, Math.floor(estimatedTurns / TURNS_PER_ROUND));
   const estimatedHours =
     Math.round(((estimatedTurns * turnIntervalMs) / 3_600_000) * 10) / 10;
   const usd = (budget / 1_000_000) * USD_PER_MILLION[layout];
@@ -45,7 +46,7 @@ export function estimateTokenBudget(
         ? "Gemini"
         : "GPT";
 
-  const summary = `${budget.toLocaleString()} 토큰 ≈ 발언 ${estimatedTurns}개(라운드 ${estimatedRounds}회) · ${layoutLabel} · ${estimatedHours}시간 분량(8초 간격) · ${estimatedUsd}`;
+  const summary = `${budget.toLocaleString()} 토큰 ≈ 발언 ${estimatedTurns}개(라운드 ${estimatedRounds}회) · ${layoutLabel} · ${estimatedHours}시간 분량(4초 간격) · ${estimatedUsd}`;
 
   return {
     budget,

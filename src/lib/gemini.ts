@@ -39,7 +39,7 @@ function authModes(apiKey: string): Array<"header" | "query"> {
 }
 
 function buildGenerationConfig(model: string): Record<string, unknown> {
-  const base = { maxOutputTokens: 300 };
+  const base = { maxOutputTokens: 220 };
   // Gemini 3.x는 temperature 미권장 — 400 오류 방지
   if (!model.startsWith("gemini-3")) {
     return { ...base, temperature: 0.9 };

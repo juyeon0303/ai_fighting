@@ -9,6 +9,7 @@ import type { UserApiInput } from "@/lib/debate-llm-config";
 import { prefetchWikiContext } from "@/lib/wiki-context";
 import type { ApiLayout } from "@/lib/types";
 import { normalizeGeminiModel } from "@/lib/gemini-models";
+import { DEFAULT_TURN_INTERVAL_MS } from "@/lib/personas";
 import { normalizeOpenaiModel } from "@/lib/openai-models";
 import { verifyUserApiKeys } from "@/lib/verify-user-api";
 
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
 
   const debate = await createDebate(topic, {
     maxRounds: body.maxRounds ?? 20,
-    turnIntervalMs: body.turnIntervalMs ?? 8000,
+    turnIntervalMs: body.turnIntervalMs ?? DEFAULT_TURN_INTERVAL_MS,
     userApi,
   });
 

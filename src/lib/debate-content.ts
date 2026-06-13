@@ -253,7 +253,7 @@ export async function simulateFullRound(
 ): Promise<{ ctx: TopicContext; messages: DebateMessage[]; validations: ValidationResult[] }> {
   const { parseTopic } = await import("./topic-context");
   const ctx = parseTopic(topic);
-  const order: PersonaId[] = ["moderator", "pro", "con", "neutral"];
+  const order: PersonaId[] = ["pro", "con", "neutral"];
   const messages: DebateMessage[] = [];
   const validations: ValidationResult[] = [];
 

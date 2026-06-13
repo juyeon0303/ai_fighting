@@ -21,7 +21,7 @@ import {
   resolvePersonaLlmRuntime,
 } from "./debate-llm-config";
 import { generateDebateTurn, generateEngineTurn } from "./llm";
-import { getNextPersona } from "./personas";
+import { getNextPersona, TURNS_PER_ROUND } from "./personas";
 import type { DebateMessage } from "./types";
 
 export const debateEvents = new EventEmitter();
@@ -85,7 +85,7 @@ export async function finalizeDebate(debateId: string): Promise<void> {
       {
         endReason: debate.endReason,
         apiKey:
-          resolvePersonaLlmRuntime(debate, "moderator").apiKey ??
+          resolvePersonaLlmRuntime(debate, "pro").apiKey ??
           process.env.OPENAI_API_KEY,
         model:
           debate.openaiModel ??
@@ -130,7 +130,7 @@ async function processDebateTurnInner(
 
     const messages = await getDebateMessages(debateId);
     const messageCountAtStart = messages.length;
-    const round = Math.floor(messageCountAtStart / 4) + 1;
+    const round = Math.floor(messageCountAtStart / TURNS_PER_ROUND) + 1;
 
     if (round > debate.maxRounds) {
       await endDebate(debateId, "max_rounds");
@@ -178,7 +178,7 @@ async function processDebateTurnInner(
     }
 
     const expectedPersona = getNextPersona(
-      Math.floor(messageCountAtStart / 4) + 1,
+      Math.floor(messageCountAtStart / TURNS_PER_ROUND) + 1,
       messageCountAtStart,
     );
     if (expectedPersona !== personaId) {
@@ -224,7 +224,7 @@ async function processDebateTurnInner(
     }
 
     const updatedMessages = await getDebateMessages(debateId);
-    if (updatedMessages.length % 4 === 0) {
+    if (updatedMessages.length % TURNS_PER_ROUND === 0) {
       analyzeRound(debateId, round).catch(console.error);
     }
 
@@ -276,7 +276,7 @@ export function startDebateWorker(): void {
 
   workerTimer = setInterval(() => {
     tick().catch(console.error);
-  }, 2000);
+  }, 1000);
 
   tick().catch(console.error);
 }

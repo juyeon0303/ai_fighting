@@ -22,8 +22,7 @@ function detectConflict(messages: DebateMessage[]): boolean {
 
 function detectConsensusHint(messages: DebateMessage[]): boolean {
   const neutral = messages.find((m) => m.personaId === "neutral");
-  const moderator = messages.find((m) => m.personaId === "moderator");
-  const combined = `${neutral?.content ?? ""} ${moderator?.content ?? ""}`;
+  const combined = neutral?.content ?? "";
   return CONSENSUS_KEYWORDS.some((k) => combined.includes(k));
 }
 
