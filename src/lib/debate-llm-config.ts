@@ -161,6 +161,41 @@ export function resolveDebateLlmRuntime(
   return resolvePersonaLlmRuntime(debate, personaId);
 }
 
+export function resolveDebateAnalysisOptions(debate: Debate): {
+  apiKey?: string;
+  model: string;
+  provider: ApiProvider;
+} | null {
+  const layout = resolveApiLayout(debate);
+  if (debate.llmMode !== "user_api" || !layout) return null;
+
+  if (layout === "gemini_only" || layout === "gpt_vs_gemini") {
+    const key = debate.encryptedGeminiKey
+      ? decryptApiKey(debate.encryptedGeminiKey)
+      : null;
+    if (key) {
+      return {
+        apiKey: key,
+        model: personaModel(debate, "gemini"),
+        provider: "gemini",
+      };
+    }
+  }
+
+  const openaiKey = debate.encryptedApiKey
+    ? decryptApiKey(debate.encryptedApiKey)
+    : null;
+  if (openaiKey) {
+    return {
+      apiKey: openaiKey,
+      model: personaModel(debate, "openai"),
+      provider: "openai",
+    };
+  }
+
+  return null;
+}
+
 export function isTokenBudgetExceeded(debate: Debate): boolean {
   if (debate.llmMode !== "user_api") return false;
   if (debate.maxTokenBudget <= 0) return false;

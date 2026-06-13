@@ -1,11 +1,13 @@
 import OpenAI from "openai";
 import type { DebateMessage, DebateReport, TimelineEvent } from "./types";
-import { getPersona } from "./personas";
+import { getPersona, TURNS_PER_ROUND } from "./personas";
 import { parseTopic } from "./topic-context";
 import { DEFAULT_OPENAI_MODEL } from "./openai-models";
+import { DEFAULT_GEMINI_MODEL } from "./gemini-models";
+import { requestGeminiTurn } from "./gemini";
+import type { ApiProvider } from "./types";
 
 const CONFLICT_KEYWORDS = ["반박", "틀렸", "동의할 수 없", "문제", "위험", "우려"];
-const CONSENSUS_KEYWORDS = ["합의", "공감", "동의", "중도", "절충", "조건부", "공통"];
 
 function getRoundMessages(messages: DebateMessage[], round: number): DebateMessage[] {
   return messages.filter((m) => m.round === round);
@@ -18,12 +20,6 @@ function detectConflict(messages: DebateMessage[]): boolean {
 
   const combined = `${pro.content} ${con.content}`;
   return CONFLICT_KEYWORDS.some((k) => combined.includes(k));
-}
-
-function detectConsensusHint(messages: DebateMessage[]): boolean {
-  const neutral = messages.find((m) => m.personaId === "neutral");
-  const combined = neutral?.content ?? "";
-  return CONSENSUS_KEYWORDS.some((k) => combined.includes(k));
 }
 
 function endReasonLabel(endReason?: string | null): string {
@@ -46,16 +42,26 @@ function endReasonLabel(endReason?: string | null): string {
 async function callLLM(
   prompt: string,
   maxTokens = 400,
-  apiKey?: string,
-  model = DEFAULT_OPENAI_MODEL,
+  options?: { apiKey?: string; model?: string; provider?: ApiProvider },
 ): Promise<string | null> {
-  const key = apiKey ?? process.env.OPENAI_API_KEY;
+  const key = options?.apiKey ?? process.env.OPENAI_API_KEY;
   if (!key) return null;
+
+  if (options?.provider === "gemini") {
+    const result = await requestGeminiTurn(
+      key,
+      options.model ?? DEFAULT_GEMINI_MODEL,
+      "JSON만 출력",
+      prompt,
+      maxTokens,
+    );
+    return result.content;
+  }
 
   const client = new OpenAI({ apiKey: key });
   try {
     const response = await client.chat.completions.create({
-      model,
+      model: options?.model ?? DEFAULT_OPENAI_MODEL,
       messages: [{ role: "user", content: prompt }],
       max_tokens: maxTokens,
       temperature: 0.6,
@@ -64,6 +70,34 @@ async function callLLM(
   } catch {
     return null;
   }
+}
+
+function buildOfflineRoundConsensus(
+  topic: string,
+  roundMessages: DebateMessage[],
+  round: number,
+): Omit<TimelineEvent, "id" | "createdAt"> {
+  const pro = roundMessages.find((m) => m.personaId === "pro");
+  const con = roundMessages.find((m) => m.personaId === "con");
+  const neutral = roundMessages.find((m) => m.personaId === "neutral");
+  const debateId = roundMessages[0]!.debateId;
+  const anchor = neutral ?? con ?? pro;
+
+  const neutralBit = neutral
+    ? neutral.content.slice(0, 90)
+    : "양측 논점이 아직 정리 중";
+  const summary = pro && con
+    ? `찬성은 「${pro.content.slice(0, 40)}…」, 반대는 「${con.content.slice(0, 40)}…」 — 중립 정리: ${neutralBit}`
+    : `「${topic}」 라운드 ${round} 중간 정리: ${neutralBit}`;
+
+  return {
+    debateId,
+    type: "consensus",
+    title: `라운드 ${round} — 중간 합의안`,
+    summary: summary.slice(0, 200),
+    round,
+    messageId: anchor!.id,
+  };
 }
 
 function buildOfflineReport(
@@ -142,15 +176,15 @@ export async function analyzeRoundForTimeline(
   topic: string,
   messages: DebateMessage[],
   round: number,
-  options?: { apiKey?: string; model?: string },
+  options?: { apiKey?: string; model?: string; provider?: ApiProvider },
 ): Promise<Omit<TimelineEvent, "id" | "createdAt"> | null> {
   const roundMessages = getRoundMessages(messages, round);
-  if (roundMessages.length < 4) return null;
+  if (roundMessages.length < TURNS_PER_ROUND) return null;
 
-  const debateId = roundMessages[0].debateId;
-  const lastMessage = roundMessages[roundMessages.length - 1];
+  const debateId = roundMessages[0]!.debateId;
+  const lastMessage = roundMessages[roundMessages.length - 1]!;
 
-  if (detectConflict(roundMessages) && round % 3 === 0) {
+  if (detectConflict(roundMessages) && round % 2 === 0) {
     return {
       debateId,
       type: "conflict",
@@ -161,11 +195,6 @@ export async function analyzeRoundForTimeline(
     };
   }
 
-  const hasConsensusHint = detectConsensusHint(roundMessages);
-  const shouldAnalyze = hasConsensusHint || round % 2 === 0;
-
-  if (!shouldAnalyze) return null;
-
   const historyText = roundMessages
     .map((m) => `[${getPersona(m.personaId).name}] ${m.content}`)
     .join("\n");
@@ -175,16 +204,14 @@ export async function analyzeRoundForTimeline(
 라운드 ${round} 발언:
 ${historyText}
 
-위 라운드에서 AI들 사이에 형성된 "중간 합의안" 또는 "전환점"이 있으면 JSON으로 답하세요.
-없으면 {"skip": true} 만 출력.
+위 라운드에서 찬성·반대·중립이 공통으로 인정할 수 있는 "중간 합의안" 또는 토론 전환점을 JSON으로 답하세요.
+없어도 중립이 정리한 절충안을 합의안으로 제시하세요.
 
-있으면:
-{"skip": false, "type": "consensus" 또는 "turning_point", "title": "짧은 제목", "summary": "1~2문장 요약"}
+{"skip": false, "type": "consensus" 또는 "turning_point", "title": "짧은 제목", "summary": "1~2문장 합의안"}
 
 JSON만 출력하세요.`,
-    200,
-    options?.apiKey,
-    options?.model,
+    220,
+    options,
   );
 
   if (llmResult) {
@@ -201,29 +228,11 @@ JSON만 출력하세요.`,
         };
       }
     } catch {
-      // no generic mock fallback
+      // offline fallback below
     }
   }
 
-  if (hasConsensusHint && neutralMsgsFrom(roundMessages)) {
-    const neutral = roundMessages.find((m) => m.personaId === "neutral");
-    if (neutral) {
-      return {
-        debateId,
-        type: "consensus",
-        title: `라운드 ${round} — 중립 정리`,
-        summary: neutral.content.slice(0, 120),
-        round,
-        messageId: lastMessage.id,
-      };
-    }
-  }
-
-  return null;
-}
-
-function neutralMsgsFrom(messages: DebateMessage[]): boolean {
-  return messages.some((m) => m.personaId === "neutral");
+  return buildOfflineRoundConsensus(topic, roundMessages, round);
 }
 
 export async function generateFinalReport(
@@ -234,6 +243,7 @@ export async function generateFinalReport(
     endReason?: string | null;
     apiKey?: string;
     model?: string;
+    provider?: ApiProvider;
   },
 ): Promise<Omit<DebateReport, "debateId" | "generatedAt">> {
   const historyText = messages
@@ -267,8 +277,7 @@ ${timelineText || "(없음)"}
 
 JSON만 출력하세요.`,
     800,
-    options?.apiKey,
-    options?.model,
+    options,
   );
 
   if (llmResult) {

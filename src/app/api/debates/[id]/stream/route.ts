@@ -5,7 +5,7 @@ import {
   getTimelineEvents,
 } from "@/lib/db";
 import { sanitizeDebateForClient } from "@/lib/debate-llm-config";
-import { debateEvents, startDebateWorker } from "@/lib/debate-engine";
+import { debateEvents, backfillTimeline, startDebateWorker } from "@/lib/debate-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +21,7 @@ export async function GET(
   }
 
   startDebateWorker();
+  await backfillTimeline(id);
 
   const encoder = new TextEncoder();
   const [existingMessages, timeline, report] = await Promise.all([
