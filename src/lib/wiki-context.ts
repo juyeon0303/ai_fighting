@@ -88,10 +88,10 @@ export function wikiRelatesToTopicQuery(
   return wikiRelatesToQuery(query, wiki);
 }
 
-/** 백과사전·정의문 — 토론에 부적합 */
+/** 백과사전·정의문·동음이의 오매칭 — 토론에 부적합 */
 export function isUnusableWikiFact(fact: string): boolean {
   if (fact.length > 52) return true;
-  return /영어:|이탈리아어|문화어|라틴어|IPA:|동음이의|다음 사람|를 가리킨다|문장:\s*[A-Za-z]|\([A-Za-z]{3,}[^)]{8,}\)/.test(
+  return /영어:|이탈리아어|문화어|라틴어|IPA:|동음이의|다음 사람|를 가리킨다|문장:\s*[A-Za-z]|\([A-Za-z]{3,}[^)]{8,}\)|洋瓷|陶瓷|兩者|도자기|뜻은 다음과 같다/.test(
     fact,
   );
 }

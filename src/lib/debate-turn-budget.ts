@@ -2,9 +2,9 @@ import type { DebateMessage, PersonaId } from "./types";
 
 /** 발언 1회 최대 출력 토큰 — 의미 유지 최소 한도 */
 export const OUTPUT_TOKENS: Record<PersonaId, number> = {
-  pro: 90,
-  con: 90,
-  neutral: 110,
+  pro: 100,
+  con: 100,
+  neutral: 120,
   moderator: 110,
 };
 
@@ -59,7 +59,11 @@ export function clampTurnContent(content: string, personaId: PersonaId): string 
   }
   if (out.length >= 20) return out.trim();
 
-  return truncateSnippet(normalized, maxChars);
+  const cut = truncateSnippet(normalized, maxChars);
+  if (!/[.!?…다임함요봄해]$/.test(cut)) {
+    return cut.endsWith("…") ? cut : `${cut}…`;
+  }
+  return cut;
 }
 
 /** 격식체를 평서체로 가볍게 정리 — 재호출 없이 품질 보정 */

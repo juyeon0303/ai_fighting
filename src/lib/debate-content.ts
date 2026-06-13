@@ -259,7 +259,7 @@ function exampleLine(ctx: TopicContext): string {
     food: "예:나는 찬성인데 혼밥·야식 상황에선 이게 더 낫다고 봄.",
     tech: "예:나는 찬성인데 생산성 체감이 더 크다고 봄.",
     social: "예:나는 찬성인데 일상에서 바로 이득이 있다고 봄.",
-    science: "예:나는 이 설명이 관측이랑 더 맞다고 봄.",
+    science: "예:나는 다세계 해석 기준으론 논리적으로 열릴 수 있다고 봄.",
   };
   return openers[ctx.domain] ?? "예:나는 이쪽인데 숨은 변수 하나 짚고 말할게.";
 }

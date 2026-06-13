@@ -9,12 +9,107 @@ import {
 import {
   factRelatesToEntity,
   getWikiContext,
+  isDisambiguationWiki,
   isUnusableWikiFact,
   pickFreshWikiFact,
   pickSeeded,
   wikiRelatesToQuery,
+  wikiRelatesToTopicQuery,
   type WikiContext,
 } from "./wiki-context";
+
+function normToken(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, "");
+}
+
+/** 주제 맥락에 맞는 위키인지 (양자→洋瓷 거부) */
+export function wikiRelatesToTopicContext(
+  ctx: TopicContext,
+  wiki: WikiContext,
+): boolean {
+  if (isDisambiguationWiki(wiki)) return false;
+
+  const topicBlob = `${ctx.topic} ${ctx.debateQuestion}`;
+  const wikiBlob = `${wiki.title} ${wiki.extract}`;
+
+  if (ctx.domain === "science" && /양자|다세계|불멸|역학|중첩|관측/.test(topicBlob)) {
+    if (/洋瓷|陶瓷|兩者|도자기|두 사람 또는 사물|일정 관계에 있는|뜻은 다음과 같다/.test(wikiBlob)) {
+      return false;
+    }
+    if (!/역학|물리|다세계|중첩|관측|불멸|파동|해석|우주|에버트|자살|실험/.test(wikiBlob)) {
+      return false;
+    }
+  }
+
+  return (
+    wikiRelatesToTopicQuery(ctx.topic, wiki) ||
+    wikiRelatesToTopicQuery(ctx.displayTopic, wiki)
+  );
+}
+
+function buildContextWikiQueries(ctx: TopicContext): string[] {
+  const t = ctx.topic;
+  const ordered: string[] = [];
+
+  if (/다세계/.test(t)) ordered.push("다세계 해석");
+  if (/양자/.test(t) && /불멸/.test(t)) {
+    ordered.push("양자 자살");
+    ordered.push("양자역학의 다세계 해석");
+  }
+  if (/양자/.test(t)) {
+    ordered.push("양자역학");
+    ordered.push("양자 역학");
+  }
+  if (/하늘.*파란|파란.*하늘/.test(t)) ordered.push("레일리 산란");
+
+  ordered.push(t);
+  ordered.push(t.replace(/\([^)]*\)/g, "").trim());
+
+  const stripped = t
+    .replace(/[?？!！.。]/g, "")
+    .replace(/(?:은|는|이|가)\s*.+$/, "")
+    .trim();
+  if (stripped) ordered.push(stripped);
+
+  return [...new Set(ordered.filter((q) => q.length >= 2))];
+}
+
+async function getTopicWikiContext(
+  ctx: TopicContext,
+): Promise<WikiContext | null> {
+  for (const q of buildContextWikiQueries(ctx)) {
+    const wiki = await getWikiContext(q);
+    if (wiki && wikiRelatesToTopicContext(ctx, wiki)) return wiki;
+  }
+  return null;
+}
+
+function factViolatesTopicContext(ctx: TopicContext, fact: string): boolean {
+  const topicBlob = `${ctx.topic} ${ctx.debateQuestion}`;
+  if (ctx.domain === "science" && /양자|다세계|불멸/.test(topicBlob)) {
+    return /洋瓷|陶瓷|兩者|도자기|두 사람 또는 사물|뜻은 다음과 같다/.test(fact);
+  }
+  return false;
+}
+
+function factMatchesTopic(
+  ctx: TopicContext,
+  fact: string,
+  wiki: WikiContext | null,
+): boolean {
+  if (factViolatesTopicContext(ctx, fact)) return false;
+  const tokens =
+    ctx.topic.match(/[가-힣A-Za-z]{2,}/g)?.filter(
+      (w) => !/^(은|는|이|가|한|할|가능|해석)$/.test(w),
+    ) ?? [];
+  const blob = normToken(`${wiki?.title ?? ""} ${fact}`);
+  if (tokens.length === 0) return true;
+  if (tokens.some((t) => blob.includes(normToken(t)))) return true;
+  if (ctx.domain === "science") {
+    return /역학|다세계|관측|중첩|불멸|물리|우주|실험/.test(blob);
+  }
+  return true;
+}
 
 export interface DebateSources {
   primary: WikiContext | null;
@@ -45,7 +140,7 @@ export async function getDebateSources(
   ctx: TopicContext,
 ): Promise<DebateSources> {
   const [primary, sideA, sideB] = await Promise.all([
-    getWikiContext(ctx.topic),
+    getTopicWikiContext(ctx),
     ctx.sideA ? wikiForSide(ctx.sideA) : Promise.resolve(null),
     ctx.sideB ? wikiForSide(ctx.sideB) : Promise.resolve(null),
   ]);
@@ -73,13 +168,19 @@ function pickWikiCue(
   entityName: string,
   history: DebateMessage[],
   seed: number,
+  ctx?: TopicContext,
 ): string | null {
   if (!wiki) return null;
   for (let i = 0; i < 8; i++) {
     const fact = pickFreshWikiFact(wiki, history, seed + i, entityName);
     if (!fact) continue;
     if (factViolatesGroundTruth(entityName, fact)) continue;
-    if (!factRelatesToEntity(entityName, fact, wiki)) continue;
+    if (ctx && !ctx.sideA && !ctx.sideB) {
+      if (!factMatchesTopic(ctx, fact, wiki)) continue;
+    } else if (!factRelatesToEntity(entityName, fact, wiki)) {
+      continue;
+    }
+    if (ctx && factViolatesTopicContext(ctx, fact)) continue;
     if (isUnusableWikiFact(fact)) continue;
     return fact;
   }
@@ -91,10 +192,11 @@ function pickCueForEntity(
   wiki: WikiContext | null,
   history: DebateMessage[],
   seed: number,
+  ctx?: TopicContext,
 ): string | null {
   const grounded = pickGroundTruthCue(name, history, seed);
   if (grounded) return grounded;
-  return pickWikiCue(wiki, name, history, seed);
+  return pickWikiCue(wiki, name, history, seed, ctx);
 }
 
 /** API·엔진 공통 — 검증 팩트 1개 (모든 토론 모드) */
@@ -112,14 +214,14 @@ export function factCueForPrompt(
 
   if (ctx.sideA && ctx.sideB) {
     if (personaId === "pro") {
-      return pickCueForEntity(ctx.sideA, sources.sideA, history, seed);
+      return pickCueForEntity(ctx.sideA, sources.sideA, history, seed, ctx);
     }
     if (personaId === "con") {
-      return pickCueForEntity(ctx.sideB, sources.sideB, history, seed);
+      return pickCueForEntity(ctx.sideB, sources.sideB, history, seed, ctx);
     }
     if (personaId === "neutral") {
-      const a = pickCueForEntity(ctx.sideA, sources.sideA, history, seed);
-      const b = pickCueForEntity(ctx.sideB, sources.sideB, history, seed + 1);
+      const a = pickCueForEntity(ctx.sideA, sources.sideA, history, seed, ctx);
+      const b = pickCueForEntity(ctx.sideB, sources.sideB, history, seed + 1, ctx);
       if (a && b) return `${ctx.sideA}:${a}|${ctx.sideB}:${b}`;
       if (a) return `${ctx.sideA}:${a}`;
       if (b) return `${ctx.sideB}:${b}`;
@@ -130,7 +232,7 @@ export function factCueForPrompt(
   if (personaId === "neutral") return null;
 
   const topicKey = ctx.displayTopic || ctx.topic;
-  return pickWikiCue(sources.primary, topicKey, history, seed);
+  return pickWikiCue(sources.primary, topicKey, history, seed, ctx);
 }
 
 const DOMAIN_WEAVE: Record<TopicDomain, string[]> = {

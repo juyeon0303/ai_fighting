@@ -94,6 +94,32 @@ export function hasAwkwardSourceCitation(content: string): boolean {
   );
 }
 
+/** 주제·도메인과 안 맞는 팩트/발언 (양자→洋瓷 등) */
+export function hasTopicDomainMismatch(
+  ctx: TopicContext,
+  content: string,
+): boolean {
+  const topicBlob = `${ctx.topic} ${ctx.debateQuestion}`;
+
+  if (ctx.domain === "science" && /양자|다세계|불멸|역학|중첩/.test(topicBlob)) {
+    if (/洋瓷|陶瓷|兩者|도자기|양자\(洋|양자\(瓷/.test(content)) return true;
+    if (/두 사람 또는 사물|일정 관계에 있는/.test(content)) return true;
+  }
+
+  return false;
+}
+
+/** 문장이 중간에 끊긴 경우 */
+export function isIncompleteTurn(content: string): boolean {
+  const t = content.trim();
+  if (t.length < 15) return true;
+  if (/[.!?…다임함요봄해줘]\s*$/.test(t)) return false;
+  if (/(?:마다|에서|하여|이고|으며|라서|도록|처럼|듯,|가지)$/.test(t)) {
+    return true;
+  }
+  return false;
+}
+
 /** 선수·팀 등 검증 DB에 있는 대상의 팩트 오류 */
 export function hasGroundTruthViolation(
   ctx: TopicContext,
@@ -186,6 +212,8 @@ export function acceptDebateTurn(
       return false;
     }
     if (hasGroundTruthViolation(ctx, personaId, content)) return false;
+    if (hasTopicDomainMismatch(ctx, content)) return false;
   }
+  if (isIncompleteTurn(content)) return false;
   return true;
 }
