@@ -1,3 +1,5 @@
+import type { DebateMessage } from "./types";
+
 export interface WikiContext {
   title: string;
   extract: string;
@@ -149,12 +151,50 @@ export function pickWikiFact(wiki: WikiContext, seed: number): string {
   return pickSeeded(wiki.facts, seed);
 }
 
+export function wikiSnippet(fact: string, maxLen = 40): string {
+  const cleaned = fact.replace(/\.$/, "").trim();
+  if (cleaned.length <= maxLen) return cleaned;
+  const cut = cleaned.slice(0, maxLen);
+  const lastBreak = Math.max(cut.lastIndexOf(" "), cut.lastIndexOf(","));
+  if (lastBreak > 12) return cut.slice(0, lastBreak);
+  return `${cut}…`;
+}
+
+function factAlreadyUsed(fact: string, history: DebateMessage[]): boolean {
+  const key = fact.replace(/\s+/g, " ").trim().slice(0, 22).toLowerCase();
+  if (key.length < 8) return false;
+  const blob = history.map((m) => m.content).join(" ").toLowerCase();
+  return blob.includes(key);
+}
+
+/** 토론에서 아직 안 쓴 위키 사실 선택 */
+export function pickFreshWikiFact(
+  wiki: WikiContext,
+  history: DebateMessage[],
+  seed: number,
+): string | null {
+  if (wiki.facts.length === 0) {
+    const short = wikiSnippet(wiki.extract, 50);
+    return factAlreadyUsed(short, history) ? null : short;
+  }
+  for (let i = 0; i < Math.min(wiki.facts.length, 6); i++) {
+    const fact = pickSeeded(wiki.facts, seed + i);
+    if (!factAlreadyUsed(fact, history)) {
+      return wikiSnippet(fact, 48);
+    }
+  }
+  return null;
+}
+
 export function wikiCacheSize(): number {
   return cache.size;
 }
 
 export function prefetchWikiContext(topic: string): void {
   getWikiContext(topic).catch(() => {});
+  import("./debate-sources").then(({ prefetchDebateSources }) => {
+    prefetchDebateSources(topic);
+  });
 }
 
 export { hashSeed, pickSeeded };

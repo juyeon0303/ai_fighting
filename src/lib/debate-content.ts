@@ -3,6 +3,9 @@ import type { DebateMode, TopicContext, TopicDomain } from "./topic-context";
 import { getPersonaStance } from "./topic-context";
 import { DEBATE_STYLE, DEBATE_BAD_EXAMPLES } from "./debate-style";
 import { compactHistory } from "./debate-turn-budget";
+import type { DebateSources } from "./debate-sources";
+import { wikiCueForPrompt } from "./debate-sources";
+import { FRESHNESS_RULE, pickNovelLens } from "./debate-novelty";
 import {
   acceptDebateTurn,
   bannedPhraseReminder,
@@ -245,6 +248,7 @@ export function buildDebatePrompt(
   personaId: PersonaId,
   history: DebateMessage[],
   round: number,
+  sources?: DebateSources | null,
 ): string {
   const stance = getPersonaStance(personaId, ctx);
   const hints = DOMAIN_HINTS[ctx.domain];
@@ -261,19 +265,27 @@ export function buildDebatePrompt(
     ? `상대방금:${truncateSnippet(lastOpp.content, 80)}`
     : "";
 
+  const wikiLine =
+    sources && personaId !== "moderator"
+      ? wikiCueForPrompt(sources, ctx, personaId, history, round)
+      : null;
+
   return [
     `주제:${ctx.topic}`,
     `역할:${stance}`,
     `R${round}`,
     modeRules(ctx),
     `이번각도:${personaHint(personaId, hints, round)}`,
+    `신선렌즈:${pickNovelLens(ctx.domain, round, personaId)}`,
+    wikiLine ? `위키참고:${wikiLine}` : null,
     `직전:${compactHistory(history)}`,
     `이미씀금지:${bannedPhraseReminder(history)}`,
     oppLine,
     rebuttalRule(personaId, round),
     DEBATE_STYLE,
+    FRESHNESS_RULE,
     `금지:${DEBATE_BAD_EXAMPLES}`,
-    "예:나는 페이커 쪽인데 월드 성적이 더 낫다 봄.",
+    "예:나는 페이커 쪽인데 손목 부담 적은 시즌엔 월드 성적이 더 설득력 있음.",
   ]
     .filter(Boolean)
     .join("\n");

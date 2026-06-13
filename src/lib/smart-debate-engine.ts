@@ -1,11 +1,14 @@
 import type { DebateMessage, PersonaId } from "./types";
 import type { DebateMode, TopicContext, TopicDomain } from "./topic-context";
 import { validateResponse } from "./debate-content";
+import { acceptDebateTurn } from "./debate-quality";
+import type { DebateSources } from "./debate-sources";
+import { getDebateSources, wikiLineForSpeech } from "./debate-sources";
+import { pickNovelLens } from "./debate-novelty";
 import {
-  getWikiContext,
   hashSeed,
+  pickFreshWikiFact,
   pickSeeded,
-  pickWikiFact,
   type WikiContext,
 } from "./wiki-context";
 
@@ -199,12 +202,19 @@ function wikiRelatesToSides(wiki: WikiContext, ctx: TopicContext): boolean {
 
 /** 사회자만, 짧게. '위키'·긴 인용 금지 */
 function moderatorWikiFlavor(
-  wiki: WikiContext,
+  sources: DebateSources,
   ctx: TopicContext,
+  history: DebateMessage[],
   seed: number,
 ): string | null {
-  if (!wikiRelatesToSides(wiki, ctx)) return null;
-  const fact = pickWikiFact(wiki, seed);
+  const wiki =
+    sources.primary ??
+    sources.sideA ??
+    sources.sideB;
+  if (!wiki || !wikiRelatesToSides(wiki, ctx)) return null;
+
+  const fact = pickFreshWikiFact(wiki, history, seed);
+  if (!fact) return null;
   const snippet = wikiSnippet(fact);
   if (snippet.length < 8) return null;
 
@@ -212,6 +222,39 @@ function moderatorWikiFlavor(
     [
       `${wiki.title} 보면 ${snippet} 정도로 알려져 있음. 이 정도만 참고하고 가자.`,
       `${snippet} 같은 설명도 있는데, 논점이랑 맞는지 따져 보자.`,
+    ],
+    seed,
+  );
+}
+
+function freshnessFlavor(
+  sources: DebateSources,
+  ctx: TopicContext,
+  personaId: PersonaId,
+  history: DebateMessage[],
+  round: number,
+  seed: number,
+): string | null {
+  if (personaId === "moderator") return null;
+
+  const lens = pickNovelLens(ctx.domain, round, personaId);
+  const wikiLine =
+    wikiLineForSpeech(sources, ctx, personaId, history, round, seed) ?? null;
+
+  if (wikiLine) {
+    return pickSeeded(
+      [
+        `${wikiLine} ${lens} 관점이 핵심임.`,
+        `${lens} 보면 ${wikiLine}`,
+      ],
+      seed,
+    );
+  }
+
+  return pickSeeded(
+    [
+      `뻔한 말 말고 ${lens} 쪽으로 보면 답이 갈림.`,
+      `${lens} 변수가 지금 쟁점임.`,
     ],
     seed,
   );
@@ -236,7 +279,7 @@ function composeVersus(
   personaId: PersonaId,
   history: DebateMessage[],
   round: number,
-  wiki: WikiContext | null,
+  sources: DebateSources,
   debateId: string,
   salt: number,
 ): string {
@@ -246,13 +289,14 @@ function composeVersus(
   const seed = seedFor(debateId, round, personaId, salt);
   const i = round - 1 + salt;
   const opp = lastOpponentMessage(personaId, history);
+  const fresh = freshnessFlavor(sources, ctx, personaId, history, round, seed);
 
   if (personaId === "moderator") {
     if (round === 1) {
       const openers = [
         `${a}랑 ${b}, 뭐가 나은지 각자 근거 들고 와.`,
         `${a} vs ${b} — 쟁점은 ${pickSeeded(h.pro, seed)} vs ${pickSeeded(h.con, seed)} 정도로 보면 됨.`,
-        wiki ? moderatorWikiFlavor(wiki, ctx, seed) : null,
+        moderatorWikiFlavor(sources, ctx, history, seed),
       ].filter(Boolean) as string[];
       return pickSeeded(openers, seed);
     }
@@ -260,7 +304,7 @@ function composeVersus(
     const lines = [
       `지금까지 말 보면 기준이 갈리는데, ${pickSeeded(h.neutral, seed)} 쪽으로 정리해 보자.`,
       `상대 말 한 줄 짚고 반박해 봐.`,
-      wiki ? moderatorWikiFlavor(wiki, ctx, seed) : null,
+      moderatorWikiFlavor(sources, ctx, history, seed),
       `${a} vs ${b} — 쟁점은 ${pickSeeded(h.pro, seed)} vs ${pickSeeded(h.con, seed)} 정도로 보면 됨.`,
     ].filter(Boolean) as string[];
     return pickSeeded(lines, seed);
@@ -274,7 +318,8 @@ function composeVersus(
     ];
     const parts = [
       `${pickSeeded(openers, seed)} ${pickSeeded(h.pro, i)}.`,
-    ];
+      fresh,
+    ].filter(Boolean) as string[];
     if (opp && round > 1) {
       const q = extractQuote(opp.content, seed);
       if (q) {
@@ -298,7 +343,8 @@ function composeVersus(
     ];
     const parts = [
       `${pickSeeded(openers, seed)} ${pickSeeded(h.con, i)}.`,
-    ];
+      fresh,
+    ].filter(Boolean) as string[];
     if (opp && round > 1) {
       const q = extractQuote(opp.content, seed + 1);
       if (q) {
@@ -318,7 +364,8 @@ function composeVersus(
     `둘 다 장단 있어서 ${pickSeeded(h.neutral, seed)}.`,
     `${a}는 ${pickSeeded(h.pro, i)} 느낌이고, ${b}는 ${pickSeeded(h.con, i)} 쪽이라 그냥 취향 문제에 가까움.`,
     `한쪽으로 못 박기 어렵다. ${pickSeeded(h.neutral, i)}.`,
-  ];
+    fresh,
+  ].filter(Boolean) as string[];
   return pickSeeded(neutralLines, seed);
 }
 
@@ -327,7 +374,7 @@ function composeChoice(
   personaId: PersonaId,
   history: DebateMessage[],
   round: number,
-  wiki: WikiContext | null,
+  sources: DebateSources,
   debateId: string,
   salt: number,
 ): string {
@@ -335,6 +382,7 @@ function composeChoice(
   const h = DOMAIN_ANGLES[ctx.domain];
   const seed = seedFor(debateId, round, personaId, salt);
   const i = round - 1 + salt;
+  const fresh = freshnessFlavor(sources, ctx, personaId, history, round, seed);
 
   const proPick = pickSeeded(
     [ctx.anchors[1] ?? "첫 번째 후보", "우선 후보", "상위 선택지", "A안"],
@@ -350,8 +398,8 @@ function composeChoice(
     const lines = [
       `「${t}」 각자 답 골라서 근거 말해 봐.`,
       `후보가 갈리는 주제다. ${pickSeeded(h.neutral, seed)}.`,
-      round === 1 && wiki
-        ? moderatorWikiFlavor(wiki, ctx, seed)
+      round === 1
+        ? moderatorWikiFlavor(sources, ctx, history, seed)
         : `비교 기준부터 맞추고 가자.`,
     ].filter(Boolean) as string[];
     return pickSeeded(lines, seed);
@@ -360,7 +408,8 @@ function composeChoice(
   if (personaId === "pro") {
     const parts = [
       `나는 ${proPick} 쪽인데, ${pickSeeded(h.pro, i)}.`,
-    ];
+      fresh,
+    ].filter(Boolean) as string[];
     if (opp && round > 1) {
       const q = extractQuote(opp.content, seed);
       if (q) {
@@ -377,7 +426,8 @@ function composeChoice(
   if (personaId === "con") {
     const parts = [
       `차라리 ${conPick}이 낫다고 봄. ${pickSeeded(h.con, i)}.`,
-    ];
+      fresh,
+    ].filter(Boolean) as string[];
     if (opp && round > 1) {
       const q = extractQuote(opp.content, seed);
       if (q) {
@@ -391,7 +441,13 @@ function composeChoice(
     return parts.join(" ");
   }
 
-  return `「${t}」 정답 하나로 못 박기 어렵다. ${pickSeeded(h.neutral, i)}. ${proPick}이랑 ${conPick} 둘 다 일리 있음.`;
+  return [
+    `「${t}」 정답 하나로 못 박기 어렵다. ${pickSeeded(h.neutral, i)}.`,
+    `${proPick}이랑 ${conPick} 둘 다 일리 있음.`,
+    fresh,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function composeDual(
@@ -399,7 +455,7 @@ function composeDual(
   personaId: PersonaId,
   history: DebateMessage[],
   round: number,
-  wiki: WikiContext | null,
+  sources: DebateSources,
   debateId: string,
   salt: number,
 ): string {
@@ -409,13 +465,14 @@ function composeDual(
   const seed = seedFor(debateId, round, personaId, salt);
   const i = round - 1 + salt;
   const opp = lastOpponentMessage(personaId, history);
+  const fresh = freshnessFlavor(sources, ctx, personaId, history, round, seed);
 
   if (personaId === "moderator") {
     const lines = [
       `「${label}」 토론 시작. 쟁점은 ${q}.`,
       `${pickSeeded(h.neutral, seed)} 쪽으로 말해 봐.`,
-      round === 1 && wiki
-        ? moderatorWikiFlavor(wiki, ctx, seed)
+      round === 1
+        ? moderatorWikiFlavor(sources, ctx, history, seed)
         : `상대 말 짚고 반박해 봐.`,
     ].filter(Boolean) as string[];
     return pickSeeded(lines, seed);
@@ -424,7 +481,8 @@ function composeDual(
   if (personaId === "pro") {
     const parts = [
       `${q} — 찬성 쪽임. ${pickSeeded(h.pro, i)}.`,
-    ];
+      fresh,
+    ].filter(Boolean) as string[];
     if (opp) {
       const qSnippet = extractQuote(opp.content, seed);
       if (qSnippet) {
@@ -441,7 +499,8 @@ function composeDual(
   if (personaId === "con") {
     const parts = [
       `${q} — 반대 쪽임. ${pickSeeded(h.con, i)}.`,
-    ];
+      fresh,
+    ].filter(Boolean) as string[];
     if (opp) {
       const qSnippet = extractQuote(opp.content, seed);
       if (qSnippet) {
@@ -455,38 +514,65 @@ function composeDual(
     return parts.join(" ");
   }
 
-  return `${q} — 한쪽으로 못 박기 어렵다. 찬성은 ${pickSeeded(h.pro, i)} 쪽, 반대는 ${pickSeeded(h.con, i)} 쪽. ${pickSeeded(h.neutral, seed)}.`;
+  return [
+    `${q} — 한쪽으로 못 박기 어렵다.`,
+    `찬성은 ${pickSeeded(h.pro, i)} 쪽, 반대는 ${pickSeeded(h.con, i)} 쪽.`,
+    pickSeeded(h.neutral, seed),
+    fresh,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function composeCasual(
   ctx: TopicContext,
   personaId: PersonaId,
+  history: DebateMessage[],
   round: number,
-  wiki: WikiContext | null,
+  sources: DebateSources,
   debateId: string,
   salt: number,
 ): string {
   const q = ctx.debateQuestion;
   const seed = seedFor(debateId, round, personaId, salt);
+  const fresh = freshnessFlavor(sources, ctx, personaId, history, round, seed);
 
   if (personaId === "moderator") {
     const lines = [
       `입력이 「${ctx.topic}」로 짧다. 토론은 ${q}로 가져가자.`,
       `짧아도 쟁점은 있음. 근거 말해 봐.`,
-      round === 1 && wiki
-        ? moderatorWikiFlavor(wiki, ctx, seed)
+      round === 1
+        ? moderatorWikiFlavor(sources, ctx, history, seed)
         : `「${ctx.topic}」를 어떻게 보느냐가 핵심임.`,
     ].filter(Boolean) as string[];
     return pickSeeded(lines, seed);
   }
 
   if (personaId === "pro") {
-    return `「${ctx.topic}」도 의미 있음. ${q} — 긍정적으로 봄. 짧아도 관계 여는 신호가 될 수 있음.`;
+    return [
+      `「${ctx.topic}」도 의미 있음.`,
+      `${q} — 긍정적으로 봄.`,
+      fresh ?? `짧아도 관계 여는 신호가 될 수 있음.`,
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
   if (personaId === "con") {
-    return `「${ctx.topic}」만으론 대화가 잘 안 이어짐. ${q} — 부정적으로 봄. 형식적 반복에 가까움.`;
+    return [
+      `「${ctx.topic}」만으론 대화가 잘 안 이어짐.`,
+      `${q} — 부정적으로 봄.`,
+      fresh ?? `형식적 반복에 가까움.`,
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
-  return `${q} — 상황마다 다름. 친밀도랑 맥락에 따라 평가가 갈림.`;
+  return [
+    `${q} — 상황마다 다름.`,
+    `친밀도랑 맥락에 따라 평가가 갈림.`,
+    fresh,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function composeByMode(
@@ -494,23 +580,29 @@ function composeByMode(
   personaId: PersonaId,
   history: DebateMessage[],
   round: number,
-  wiki: WikiContext | null,
+  sources: DebateSources,
   debateId: string,
   salt: number,
 ): string {
   const mode: DebateMode = ctx.mode;
 
   if (mode === "versus" || mode === "comparison") {
-    return composeVersus(ctx, personaId, history, round, wiki, debateId, salt);
+    return composeVersus(ctx, personaId, history, round, sources, debateId, salt);
   }
   if (mode === "choice") {
-    return composeChoice(ctx, personaId, history, round, wiki, debateId, salt);
+    return composeChoice(ctx, personaId, history, round, sources, debateId, salt);
   }
   if (mode === "casual") {
-    return composeCasual(ctx, personaId, round, wiki, debateId, salt);
+    return composeCasual(ctx, personaId, history, round, sources, debateId, salt);
   }
-  return composeDual(ctx, personaId, history, round, wiki, debateId, salt);
+  return composeDual(ctx, personaId, history, round, sources, debateId, salt);
 }
+
+const EMPTY_SOURCES: DebateSources = {
+  primary: null,
+  sideA: null,
+  sideB: null,
+};
 
 export async function generateSmartTurn(
   ctx: TopicContext,
@@ -519,7 +611,7 @@ export async function generateSmartTurn(
   round: number,
   debateId: string,
 ): Promise<string> {
-  const wiki = await getWikiContext(ctx.topic);
+  const sources = await getDebateSources(ctx);
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const content = composeByMode(
@@ -527,12 +619,15 @@ export async function generateSmartTurn(
       personaId,
       history,
       round,
-      wiki,
+      sources,
       debateId,
       attempt,
     );
 
-    if (validateResponse(ctx, personaId, content).ok) {
+    if (
+      validateResponse(ctx, personaId, content).ok &&
+      acceptDebateTurn(history, personaId, content)
+    ) {
       return content;
     }
   }
@@ -542,7 +637,7 @@ export async function generateSmartTurn(
     personaId,
     history,
     round,
-    null,
+    EMPTY_SOURCES,
     debateId,
     99,
   );

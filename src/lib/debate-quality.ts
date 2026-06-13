@@ -77,6 +77,12 @@ export function isTooRepetitive(
     if (overlapRatio(prev.content, content) > 0.42) return true;
   }
 
+  const recent = history.slice(-4);
+  for (const prev of recent) {
+    if (prev.personaId === personaId) continue;
+    if (overlapRatio(prev.content, content) > 0.38) return true;
+  }
+
   const used = new Set<string>();
   for (const m of history.slice(-8)) {
     for (const p of REPEAT_PHRASES) {

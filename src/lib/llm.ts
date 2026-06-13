@@ -12,6 +12,7 @@ import type { PersonaLlmRuntime } from "./debate-llm-config";
 import { requestGeminiTurn } from "./gemini";
 import { DEFAULT_OPENAI_MODEL } from "./openai-models";
 import { parseTopic } from "./topic-context";
+import { getDebateSources } from "./debate-sources";
 import {
   clampTurnContent,
   maxOutputTokens,
@@ -19,7 +20,7 @@ import {
 } from "./debate-turn-budget";
 
 const SYSTEM =
-  "한국어 토론. 친구 말투. 1~2문장. 뉴스·논문체 금지. 같은 말 반복 금지.";
+  "한국어 토론. 친구 말투. 1~2문장. 위키 사실 활용. 뻔한 말·반복 금지.";
 
 export type LlmStopReason = "auth" | "quota" | null;
 
@@ -75,6 +76,7 @@ async function requestOpenAiTurn(
   personaId: PersonaId,
   history: DebateMessage[],
   round: number,
+  sources: Awaited<ReturnType<typeof getDebateSources>>,
 ): Promise<{ content: string | null; tokensUsed: number; stopReason: LlmStopReason }> {
   try {
     const response = await client.chat.completions.create({
@@ -83,7 +85,7 @@ async function requestOpenAiTurn(
         { role: "system", content: SYSTEM },
         {
           role: "user",
-          content: buildDebatePrompt(ctx, personaId, history, round),
+          content: buildDebatePrompt(ctx, personaId, history, round, sources),
         },
       ],
       max_tokens: maxOutputTokens(personaId),
@@ -116,13 +118,22 @@ async function generateWithProvider(
   let lastStopReason: LlmStopReason = null;
   const source = runtime.provider === "gemini" ? "gemini" : "openai";
 
+  const sources = await getDebateSources(ctx);
+  const prompt = buildDebatePrompt(
+    ctx,
+    personaId,
+    history,
+    round,
+    sources,
+  );
+
   const result =
     runtime.provider === "gemini"
       ? await requestGeminiTurn(
           runtime.apiKey!,
           runtime.model,
           SYSTEM,
-          buildDebatePrompt(ctx, personaId, history, round),
+          prompt,
           maxOutputTokens(personaId),
         )
       : await requestOpenAiTurn(
@@ -132,6 +143,7 @@ async function generateWithProvider(
           personaId,
           history,
           round,
+          sources,
         );
 
   totalTokens += result.tokensUsed;
