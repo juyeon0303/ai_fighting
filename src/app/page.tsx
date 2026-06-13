@@ -22,7 +22,7 @@ export default function Home() {
           </h1>
           <p className="mx-auto max-w-lg text-white/50">
             찬성 AI, 반대 AI, 중립 AI, 사회자 AI가 당신이 보든 말든 백그라운드에서
-            끊임없이 토론합니다. 자고 일어나면 결과를 확인하세요.
+            끊임없이 토론합니다.
           </p>
         </div>
 

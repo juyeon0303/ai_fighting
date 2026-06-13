@@ -1,5 +1,7 @@
 import type { ApiLayout, Debate, PersonaId } from "./types";
 import { decryptApiKey } from "./api-key-crypto";
+import { DEFAULT_GEMINI_MODEL } from "./gemini-models";
+import { DEFAULT_OPENAI_MODEL } from "./openai-models";
 
 export type LlmMode = "free" | "user_api";
 export type ApiProvider = "openai" | "gemini";
@@ -22,8 +24,6 @@ export interface UserApiInput {
   maxTokenBudget?: number;
 }
 
-const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
-const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash";
 
 export function personaProvider(
   layout: ApiLayout,
@@ -56,6 +56,21 @@ export function layoutLabel(layout: ApiLayout | null): string {
   return "무료";
 }
 
+export function resolveApiLayout(debate: Debate): ApiLayout | null {
+  if (debate.apiLayout) return debate.apiLayout;
+  if (debate.llmMode !== "user_api") return null;
+  if (debate.encryptedApiKey && debate.encryptedGeminiKey) {
+    return "gpt_vs_gemini";
+  }
+  if (debate.apiProvider === "gemini" || debate.encryptedGeminiKey) {
+    return "gemini_only";
+  }
+  if (debate.apiProvider === "openai" || debate.encryptedApiKey) {
+    return "openai_only";
+  }
+  return "openai_only";
+}
+
 export function resolvePersonaLlmRuntime(
   debate: Debate,
   personaId: PersonaId,
@@ -66,7 +81,8 @@ export function resolvePersonaLlmRuntime(
     tokensUsed: debate.tokensUsed,
   };
 
-  if (debate.llmMode !== "user_api" || !debate.apiLayout) {
+  const layout = resolveApiLayout(debate);
+  if (debate.llmMode !== "user_api" || !layout) {
     return {
       mode: "free",
       provider: "engine",
@@ -75,7 +91,6 @@ export function resolvePersonaLlmRuntime(
     };
   }
 
-  const layout = debate.apiLayout;
   const provider = personaProvider(layout, personaId);
   const model = personaModel(debate, provider);
 
@@ -85,6 +100,12 @@ export function resolvePersonaLlmRuntime(
       : debate.encryptedApiKey;
 
   const apiKey = encrypted ? decryptApiKey(encrypted) : null;
+
+  if (encrypted && !apiKey) {
+    console.warn(
+      `[llm] ${provider} key decrypt failed for debate ${debate.id} — engine fallback`,
+    );
+  }
 
   if (!apiKey) {
     return {
@@ -114,6 +135,7 @@ export function resolveDebateLlmRuntime(
 
 export function isTokenBudgetExceeded(debate: Debate): boolean {
   if (debate.llmMode !== "user_api") return false;
+  if (debate.maxTokenBudget <= 0) return false;
   return debate.tokensUsed >= debate.maxTokenBudget;
 }
 

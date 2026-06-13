@@ -1,4 +1,12 @@
-import type { ApiLayout } from "./types";
+import type { ApiLayout } from "@/lib/types";
+import {
+  DEFAULT_GEMINI_MODEL,
+  normalizeGeminiModel,
+} from "./gemini-models";
+import {
+  DEFAULT_OPENAI_MODEL,
+  normalizeOpenaiModel,
+} from "./openai-models";
 
 export interface SavedApiSettings {
   enabled: boolean;
@@ -29,8 +37,10 @@ export function loadApiSettings(): SavedApiSettings | null {
       layout: parsed.layout ?? "openai_only",
       openaiKey: parsed.openaiKey ?? parsed.apiKey ?? "",
       geminiKey: parsed.geminiKey ?? "",
-      openaiModel: parsed.openaiModel ?? parsed.model ?? "gpt-4o-mini",
-      geminiModel: parsed.geminiModel ?? "gemini-2.0-flash",
+      openaiModel: normalizeOpenaiModel(
+        parsed.openaiModel ?? parsed.model ?? DEFAULT_OPENAI_MODEL,
+      ),
+      geminiModel: normalizeGeminiModel(parsed.geminiModel),
       maxTokenBudget: parsed.maxTokenBudget ?? DEFAULT_MAX_TOKEN_BUDGET,
     };
   } catch {

@@ -7,6 +7,9 @@ import {
   type SavedApiSettings,
 } from "@/lib/client-api-settings";
 import { estimateTokenBudget } from "@/lib/token-budget-guide";
+import { isLikelyGeminiKey } from "@/lib/gemini";
+import { GEMINI_MODEL_OPTIONS } from "@/lib/gemini-models";
+import { OPENAI_MODEL_OPTIONS } from "@/lib/openai-models";
 
 const OPENAI_KEYS_URL = "https://platform.openai.com/api-keys";
 const GEMINI_KEYS_URL = "https://aistudio.google.com/apikey";
@@ -51,11 +54,6 @@ interface ApiKeySetupPanelProps {
 function isLikelyOpenAiKey(key: string): boolean {
   const k = key.trim();
   return k.startsWith("sk-") && k.length >= 20;
-}
-
-function isLikelyGeminiKey(key: string): boolean {
-  const k = key.trim();
-  return k.startsWith("AIza") && k.length >= 20;
 }
 
 function KeyField({
@@ -283,9 +281,16 @@ export function ApiKeySetupPanel({
                       로그인 → Get API key
                     </li>
                     <li>
-                      <code className="text-white/70">AIza...</code> 키 복사
+                      <code className="text-white/70">AIza...</code> 또는{" "}
+                      <code className="text-white/70">AQ....</code> 키 복사
                     </li>
                   </ol>
+                  <p className="mt-2 text-white/45">
+                    2026년부터 신규 키는 <code className="text-white/60">AQ.</code>로
+                    시작하는 경우가 많음 (AIza도 계속 사용 가능).
+                    토큰이 0이면 API 연결 실패 — 키 재발급 또는 모델을
+                    flash-lite로 바꿔 보세요.
+                  </p>
                   <a
                     href={GEMINI_KEYS_URL}
                     target="_blank"
@@ -314,7 +319,7 @@ export function ApiKeySetupPanel({
               label="Gemini API 키"
               value={geminiKey}
               onChange={onGeminiKeyChange}
-              placeholder="AIza..."
+              placeholder="AIza... 또는 AQ...."
               validate={isLikelyGeminiKey}
             />
           )}
@@ -328,8 +333,11 @@ export function ApiKeySetupPanel({
                   onChange={(e) => onOpenaiModelChange(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
                 >
-                  <option value="gpt-4o-mini">gpt-4o-mini (저렴, 추천)</option>
-                  <option value="gpt-4o">gpt-4o (고품질)</option>
+                  {OPENAI_MODEL_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
               </label>
             )}
@@ -341,11 +349,11 @@ export function ApiKeySetupPanel({
                   onChange={(e) => onGeminiModelChange(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
                 >
-                  <option value="gemini-2.0-flash">
-                    gemini-2.0-flash (빠름, 추천)
-                  </option>
-                  <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                  <option value="gemini-1.5-pro">gemini-1.5-pro (고품질)</option>
+                  {GEMINI_MODEL_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
               </label>
             )}

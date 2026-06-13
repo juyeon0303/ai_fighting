@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import { analyzeRoundForTimeline, generateFinalReport } from "./analysis";
+import { DEFAULT_OPENAI_MODEL } from "./openai-models";
 import {
   addMessage,
   addTimelineEvent,
@@ -19,7 +20,7 @@ import {
   isTokenBudgetExceeded,
   resolvePersonaLlmRuntime,
 } from "./debate-llm-config";
-import { generateDebateTurn } from "./llm";
+import { generateDebateTurn, generateEngineTurn } from "./llm";
 import { getNextPersona } from "./personas";
 import type { DebateMessage } from "./types";
 
@@ -81,6 +82,17 @@ export async function finalizeDebate(debateId: string): Promise<void> {
       debate.topic,
       messages,
       timeline,
+      {
+        endReason: debate.endReason,
+        apiKey:
+          resolvePersonaLlmRuntime(debate, "moderator").apiKey ??
+          process.env.OPENAI_API_KEY,
+        model:
+          debate.openaiModel ??
+          debate.apiModel ??
+          process.env.OPENAI_MODEL ??
+          DEFAULT_OPENAI_MODEL,
+      },
     );
 
     const report = await saveDebateReport({
@@ -127,7 +139,7 @@ async function processDebateTurn(debateId: string): Promise<DebateMessage | null
 
     const personaId = getNextPersona(round, messages.length);
     const runtime = resolvePersonaLlmRuntime(debate, personaId);
-    const turn = await generateDebateTurn(
+    let turn = await generateDebateTurn(
       debate.topic,
       personaId,
       messages,
@@ -136,13 +148,24 @@ async function processDebateTurn(debateId: string): Promise<DebateMessage | null
       runtime,
     );
 
-    if (turn.stopReason === "auth") {
-      await endDebate(debateId, "invalid_api_key");
-      return null;
+    if (!turn.content?.trim()) {
+      turn = await generateEngineTurn(
+        debate.topic,
+        personaId,
+        messages,
+        round,
+        debateId,
+      );
     }
 
-    if (turn.stopReason === "quota") {
-      await endDebate(debateId, "api_quota");
+    if (turn.source === "engine" && debate.llmMode === "user_api") {
+      console.warn(
+        `[debate ${debateId}] API unavailable — engine fallback (${personaId})`,
+      );
+    }
+
+    if (!turn.content?.trim()) {
+      await endDebate(debateId, "empty_turn");
       return null;
     }
 
@@ -156,6 +179,13 @@ async function processDebateTurn(debateId: string): Promise<DebateMessage | null
           round,
         );
         debateEvents.emit("message", { debateId, message });
+        const freshDebate = await getDebate(debateId);
+        if (freshDebate) {
+          debateEvents.emit("debate-update", {
+            debateId,
+            debate: freshDebate,
+          });
+        }
         await endDebate(debateId, "token_budget");
         return message;
       }
@@ -169,12 +199,23 @@ async function processDebateTurn(debateId: string): Promise<DebateMessage | null
     );
     debateEvents.emit("message", { debateId, message });
 
+    const freshDebate = await getDebate(debateId);
+    if (freshDebate) {
+      debateEvents.emit("debate-update", {
+        debateId,
+        debate: freshDebate,
+      });
+    }
+
     const updatedMessages = await getDebateMessages(debateId);
     if (updatedMessages.length % 4 === 0) {
       analyzeRound(debateId, round).catch(console.error);
     }
 
     return message;
+  } catch (error) {
+    console.error(`[debate ${debateId}] turn failed:`, error);
+    return null;
   } finally {
     processing.delete(debateId);
   }
@@ -185,10 +226,13 @@ async function tick(): Promise<void> {
 
   for (const debate of activeDebates) {
     const messages = await getDebateMessages(debate.id);
+
+    if (messages.length === 0) {
+      await processDebateTurn(debate.id);
+      continue;
+    }
+
     const now = Date.now();
-
-    if (messages.length === 0) continue;
-
     const lastAt = debate.lastTurnAt ?? messages[messages.length - 1].createdAt;
     const elapsed = now - new Date(lastAt).getTime();
     if (elapsed < debate.turnIntervalMs) continue;

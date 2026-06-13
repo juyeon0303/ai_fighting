@@ -130,6 +130,18 @@ export function DebateArena({ debateId }: DebateArenaProps) {
       setShowReport(true);
     });
 
+    es.addEventListener("debate-update", (e) => {
+      const data = JSON.parse(e.data);
+      if (data.debate) {
+        setLlmMode(data.debate.llmMode ?? "free");
+        setApiLayout(data.debate.apiLayout ?? null);
+        setTokensUsed(data.debate.tokensUsed ?? 0);
+        setMaxTokenBudget(data.debate.maxTokenBudget ?? 0);
+        setEndReason(data.debate.endReason ?? null);
+        setStatus(data.debate.status);
+      }
+    });
+
     es.addEventListener("ended", () => {
       setStatus("ended");
     });
@@ -138,6 +150,32 @@ export function DebateArena({ debateId }: DebateArenaProps) {
 
     return () => es.close();
   }, [debateId]);
+
+  useEffect(() => {
+    if (messages.length > 0 || status !== "active") return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/debates/${debateId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.messages?.length) {
+          setMessages(data.messages);
+          data.messages.forEach((m: DebateMessage) =>
+            knownMessageIds.current.add(m.id),
+          );
+        }
+        if (data.status) setStatus(data.status);
+        if (data.tokensUsed != null) setTokensUsed(data.tokensUsed);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const id = setInterval(poll, 3000);
+    poll();
+    return () => clearInterval(id);
+  }, [debateId, messages.length, status]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -209,6 +247,12 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                       {layoutLabel(apiLayout)} · 토큰{" "}
                       {tokensUsed.toLocaleString()} /{" "}
                       {maxTokenBudget.toLocaleString()}
+                      {tokensUsed === 0 && messages.length > 0 && status === "active" && (
+                        <span className="text-amber-400/90">
+                          {" "}
+                          · Gemini/GPT 연결 안 됨 → 무료 엔진
+                        </span>
+                      )}
                     </span>
                   </>
                 )}
@@ -228,7 +272,9 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                           ? "API 한도 종료"
                           : endReason === "invalid_api_key"
                             ? "API 키 오류"
-                            : endReason}
+                            : endReason === "empty_turn"
+                              ? "응답 생성 실패"
+                              : endReason}
                     </span>
                   </>
                 )}

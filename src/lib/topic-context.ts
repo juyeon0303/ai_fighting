@@ -53,7 +53,7 @@ function detectDomain(text: string): TopicDomain {
   const t = text.toLowerCase();
   if (/페이커|쵸비|faker|chovy|롤|lol|lck|lpl|티원|젠지|이스포츠|프로게이머|솔랭|챔피언|월드|msi/.test(t))
     return "esports";
-  if (/치킨|피자|마라탕|삼겹|초밥|햄버거|라면|음식|맛|먹|카페|커피|디저트/.test(t))
+  if (/치킨|피자|떡볶이|마라탕|삼겹|초밥|햄버거|라면|음식|맛|먹|카페|커피|디저트/.test(t))
     return "food";
   if (/react|vue|angular|python|javascript|typescript|ai|인공지능|프로그래밍|코딩|앱|서버|클라우드|iphone|android|삼성|애플/.test(t))
     return "tech";

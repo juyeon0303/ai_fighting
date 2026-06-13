@@ -4,6 +4,8 @@ import { v4 as uuidv4 } from "uuid";
 import { encryptApiKey } from "./api-key-crypto";
 import type { UserApiInput } from "./debate-llm-config";
 import { validateUserApiInput } from "./debate-llm-config";
+import { normalizeGeminiModel } from "./gemini-models";
+import { normalizeOpenaiModel } from "./openai-models";
 import { getSupabase, isSupabaseEnabled } from "./supabase";
 import type {
   Debate,
@@ -27,6 +29,9 @@ const DB_PATH = join(DATA_DIR, "debates.json");
 // ─── Row mappers (Supabase snake_case → app camelCase) ───
 
 function rowToDebate(row: Record<string, unknown>): Debate {
+  const llmMode = (row.llm_mode as Debate["llmMode"]) ?? "free";
+  const rawBudget = (row.max_token_budget as number) ?? 0;
+
   return {
     id: row.id as string,
     topic: row.topic as string,
@@ -36,13 +41,14 @@ function rowToDebate(row: Record<string, unknown>): Debate {
     turnIntervalMs: row.turn_interval_ms as number,
     lastTurnAt: (row.last_turn_at as string) ?? null,
     reportStatus: (row.report_status as ReportStatus) ?? "none",
-    llmMode: (row.llm_mode as Debate["llmMode"]) ?? "free",
+    llmMode,
     apiLayout: (row.api_layout as Debate["apiLayout"]) ?? null,
     apiProvider: (row.api_provider as Debate["apiProvider"]) ?? null,
     apiModel: (row.api_model as string) ?? null,
     openaiModel: (row.openai_model as string) ?? null,
     geminiModel: (row.gemini_model as string) ?? null,
-    maxTokenBudget: (row.max_token_budget as number) ?? 0,
+    maxTokenBudget:
+      llmMode === "user_api" ? (rawBudget > 0 ? rawBudget : 30_000) : rawBudget,
     tokensUsed: (row.tokens_used as number) ?? 0,
     endReason: (row.end_reason as string) ?? null,
     encryptedApiKey: (row.encrypted_api_key as string) ?? null,
@@ -118,7 +124,12 @@ function ensureFileDb(): FileDatabase {
       apiModel: d.apiModel ?? null,
       openaiModel: d.openaiModel ?? null,
       geminiModel: d.geminiModel ?? null,
-      maxTokenBudget: d.maxTokenBudget ?? 0,
+      maxTokenBudget:
+        (d.llmMode ?? "free") === "user_api"
+          ? (d.maxTokenBudget ?? 0) > 0
+            ? d.maxTokenBudget!
+            : 30_000
+          : d.maxTokenBudget ?? 0,
       tokensUsed: d.tokensUsed ?? 0,
       endReason: d.endReason ?? null,
     })),
@@ -247,8 +258,8 @@ export async function createDebate(
     : 0;
 
   const layout = userApi?.layout ?? "openai_only";
-  const openaiModel = userApi?.openaiModel ?? "gpt-4o-mini";
-  const geminiModel = userApi?.geminiModel ?? "gemini-2.0-flash";
+  const openaiModel = normalizeOpenaiModel(userApi?.openaiModel);
+  const geminiModel = normalizeGeminiModel(userApi?.geminiModel);
 
   const llmFields = hasUserApi
     ? {

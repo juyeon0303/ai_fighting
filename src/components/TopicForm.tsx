@@ -9,6 +9,8 @@ import {
   saveApiSettings,
 } from "@/lib/client-api-settings";
 import { validateUserApiInput } from "@/lib/debate-llm-config";
+import { DEFAULT_GEMINI_MODEL } from "@/lib/gemini-models";
+import { DEFAULT_OPENAI_MODEL } from "@/lib/openai-models";
 import type { ApiLayout } from "@/lib/types";
 
 export function TopicForm() {
@@ -18,8 +20,8 @@ export function TopicForm() {
   const [layout, setLayout] = useState<ApiLayout>("openai_only");
   const [openaiKey, setOpenaiKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
-  const [openaiModel, setOpenaiModel] = useState("gpt-4o-mini");
-  const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash");
+  const [openaiModel, setOpenaiModel] = useState(DEFAULT_OPENAI_MODEL);
+  const [geminiModel, setGeminiModel] = useState(DEFAULT_GEMINI_MODEL);
   const [maxTokenBudget, setMaxTokenBudget] = useState(DEFAULT_MAX_TOKEN_BUDGET);
   const [rememberKey, setRememberKey] = useState(true);
   const router = useRouter();

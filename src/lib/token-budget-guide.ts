@@ -7,7 +7,7 @@ const TOKENS_PER_TURN: Record<ApiLayout, number> = {
   gpt_vs_gemini: 850,
 };
 
-/** gpt-4o-mini 기준 대략 blended $/1M tokens */
+/** gpt-5.4-mini 기준 대략 blended $/1M tokens */
 const USD_PER_MILLION: Record<ApiLayout, number> = {
   openai_only: 0.4,
   gemini_only: 0.15,

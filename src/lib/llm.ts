@@ -9,6 +9,7 @@ import {
 import type { PersonaLlmRuntime } from "./debate-llm-config";
 import { DEBATE_STYLE } from "./debate-style";
 import { requestGeminiTurn } from "./gemini";
+import { DEFAULT_OPENAI_MODEL } from "./openai-models";
 import { parseTopic } from "./topic-context";
 
 const RETRY_HINT =
@@ -123,12 +124,7 @@ async function generateWithProvider(
     totalTokens += result.tokensUsed;
 
     if (result.stopReason) {
-      return {
-        content: "",
-        tokensUsed: totalTokens,
-        source,
-        stopReason: result.stopReason,
-      };
+      break;
     }
 
     if (!result.content) continue;
@@ -173,7 +169,7 @@ async function generateFreeTurn(
       mode: "user_api",
       provider: "openai",
       apiKey: envKey,
-      model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+      model: process.env.OPENAI_MODEL ?? DEFAULT_OPENAI_MODEL,
       maxTokenBudget: null,
       tokensUsed: 0,
     };
@@ -195,6 +191,29 @@ async function generateFreeTurn(
     debateId,
   );
 
+  return {
+    content,
+    tokensUsed: 0,
+    source: "engine",
+    stopReason: null,
+  };
+}
+
+export async function generateEngineTurn(
+  topic: string,
+  personaId: PersonaId,
+  history: DebateMessage[],
+  round: number,
+  debateId: string,
+): Promise<TurnResult> {
+  const ctx = parseTopic(topic);
+  const content = await generateMockTurn(
+    ctx,
+    personaId,
+    history,
+    round,
+    debateId,
+  );
   return {
     content,
     tokensUsed: 0,

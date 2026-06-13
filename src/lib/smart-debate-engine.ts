@@ -39,19 +39,21 @@ const DOMAIN_ANGLES: Record<
   },
   food: {
     pro: [
-      "맛 깊이·만족감이 확실히 더 큼",
-      "가격 대비 양·품질 밸런스가 좋음",
-      "조합·메뉴 다양성이 훨씬 낫음",
+      "매콤달콤한 게 확실히 더 땡김",
+      "한국 입맛엔 이쪽이 더 맞음",
+      "야식·혼밥 때 만족감이 큼",
+      "가격 대비 배부름이 나음",
     ],
     con: [
-      "질리거나 건강 부담이 빨리 온다",
-      "가격·대기시간 대비 체감 가치가 떨어진다",
-      "맛 편차가 커서 일관된 평가가 어렵다",
+      "금방 질리거나 부담이 옴",
+      "같이 나눠 먹기엔 다른 쪽이 편함",
+      "맛 편차가 커서 실패하면 바로 흥 깨짐",
+      "배달·메뉴 고를 때 이쪽이 더 무난함",
     ],
     neutral: [
-      "취향·기분·상황에 따라 답이 갈린다",
-      "점심/야식/회식 등 맥락별로 최적이 다르다",
-      "지역·브랜드 편차가 커서 한쪽으로 단정하기 어렵다",
+      "그냥 취향 싸움에 가까움",
+      "혼밥이냐 회식이냐에 따라 답이 바뀜",
+      "맛집·브랜드 따라 체감이 너무 달라짐",
     ],
   },
   tech: {
@@ -169,13 +171,6 @@ function seedFor(
   );
 }
 
-function primaryAnchor(ctx: TopicContext): string {
-  return (
-    ctx.sideA ??
-    ctx.displayTopic ??
-    ctx.topic
-  ).slice(0, 40);
-}
 
 function topicLabel(ctx: TopicContext): string {
   return ctx.displayTopic || ctx.topic;
@@ -185,6 +180,41 @@ function extractQuote(text: string, seed: number): string | null {
   const words = text.match(/[가-힣A-Za-z0-9]{3,14}/g) ?? [];
   if (words.length === 0) return null;
   return pickSeeded(words, seed);
+}
+
+function wikiSnippet(fact: string, maxLen = 32): string {
+  const cleaned = fact.replace(/\.$/, "").trim();
+  if (cleaned.length <= maxLen) return cleaned;
+  const cut = cleaned.slice(0, maxLen);
+  const lastBreak = Math.max(cut.lastIndexOf(" "), cut.lastIndexOf(","));
+  if (lastBreak > 12) return cut.slice(0, lastBreak);
+  return `${cut}…`;
+}
+
+function wikiRelatesToSides(wiki: WikiContext, ctx: TopicContext): boolean {
+  const sides = [ctx.sideA, ctx.sideB].filter(Boolean) as string[];
+  const blob = `${wiki.title} ${wiki.extract}`;
+  return sides.some((s) => blob.includes(s));
+}
+
+/** 사회자만, 짧게. '위키'·긴 인용 금지 */
+function moderatorWikiFlavor(
+  wiki: WikiContext,
+  ctx: TopicContext,
+  seed: number,
+): string | null {
+  if (!wikiRelatesToSides(wiki, ctx)) return null;
+  const fact = pickWikiFact(wiki, seed);
+  const snippet = wikiSnippet(fact);
+  if (snippet.length < 8) return null;
+
+  return pickSeeded(
+    [
+      `${wiki.title} 보면 ${snippet} 정도로 알려져 있음. 이 정도만 참고하고 가자.`,
+      `${snippet} 같은 설명도 있는데, 논점이랑 맞는지 따져 보자.`,
+    ],
+    seed,
+  );
 }
 
 function lastOpponentMessage(
@@ -199,35 +229,6 @@ function lastOpponentMessage(
     .slice()
     .reverse()
     .find((m) => m.personaId === target);
-}
-
-function wikiLine(
-  personaId: PersonaId,
-  wiki: WikiContext,
-  ctx: TopicContext,
-  seed: number,
-): string | null {
-  const fact = pickWikiFact(wiki, seed);
-  const anchor = primaryAnchor(ctx);
-
-  const templates: Record<PersonaId, string[]> = {
-    moderator: [
-      `참고로 위키 「${wiki.title}」에는 ${fact}라고 설명한다. 이 내용과 논점을 연결해 보자.`,
-    ],
-    pro: [
-      `참고 자료에 따르면 ${fact} — ${anchor}에 대한 찬성 논리와 맞닿아 있다.`,
-      `「${wiki.title}」 설명 중 ${fact}는 찬성 입장을 뒷받침한다.`,
-    ],
-    con: [
-      `위키에 ${fact}가 나오긴 하지만, ${anchor}에 그대로 적용하기는 어렵다.`,
-      `「${wiki.title}」의 ${fact}는 오히려 반대 입장에 가깝다.`,
-    ],
-    neutral: [
-      `위키 기준으로는 ${fact} — 다만 ${anchor}와 바로 연결하긴 어렵다.`,
-    ],
-  };
-
-  return pickSeeded(templates[personaId], seed);
 }
 
 function composeVersus(
@@ -248,18 +249,24 @@ function composeVersus(
 
   if (personaId === "moderator") {
     const lines = [
-      `${a}와 ${b}를 비교한다. 찬성은 ${a}, 반대는 ${b} 입장이다. ${pickSeeded(h.neutral, seed)} 기준으로 근거를 말해 달라.`,
-      `지금까지 논의를 보면 ${a}와 ${b}의 차이가 드러난다. 상대 주장을 인용해 반박해 달라.`,
-      wiki
-        ? wikiLine("moderator", wiki, ctx, seed)!
-        : `쟁점은 ${pickSeeded(h.pro, seed)}와 ${pickSeeded(h.con, seed)}의 차이다. 이 범위 안에서 답해 달라.`,
-    ];
+      `${a}랑 ${b}, 뭐가 나은지 각자 근거 들고 와.`,
+      `지금까지 말 보면 기준이 갈리는데, ${pickSeeded(h.neutral, seed)} 쪽으로 정리해 보자.`,
+      round === 1 && wiki
+        ? moderatorWikiFlavor(wiki, ctx, seed)
+        : `상대 말 한 줄 짚고 반박해 봐.`,
+      `${a} vs ${b} — 쟁점은 ${pickSeeded(h.pro, seed)} vs ${pickSeeded(h.con, seed)} 정도로 보면 됨.`,
+    ].filter(Boolean) as string[];
     return pickSeeded(lines, seed);
   }
 
   if (personaId === "pro") {
+    const openers = [
+      `나는 ${a} 쪽인데,`,
+      `${a}가 낫다고 봄.`,
+      `개인적으로 ${a}가`,
+    ];
     const parts = [
-      `찬성 입장에서는 ${a}가 더 낫다. ${pickSeeded(h.pro, i)} — ${b}와의 비교 기준이 애매하다.`,
+      `${pickSeeded(openers, seed)} ${pickSeeded(h.pro, i)}.`,
     ];
     if (opp && round > 1) {
       const q = extractQuote(opp.content, seed);
@@ -270,14 +277,20 @@ function composeVersus(
             .replace("{refute}", pickSeeded(REBUTTAL_REFUTES, seed)),
         );
       }
+    } else {
+      parts.push(`${b}도 나쁘진 않은데 지금 비교에선 ${a}가 더 설득력 있음.`);
     }
-    if (wiki && (seed % 3 !== 0)) parts.push(wikiLine("pro", wiki, ctx, seed)!);
     return parts.join(" ");
   }
 
   if (personaId === "con") {
+    const openers = [
+      `나는 ${b} 쪽인데,`,
+      `${b}가 낫다고 봄.`,
+      `차라리 ${b}가`,
+    ];
     const parts = [
-      `반대 입장에서는 ${b}가 더 낫다. ${pickSeeded(h.con, i)} — ${a} 쪽 논리에는 한계가 있다.`,
+      `${pickSeeded(openers, seed)} ${pickSeeded(h.con, i)}.`,
     ];
     if (opp && round > 1) {
       const q = extractQuote(opp.content, seed + 1);
@@ -288,12 +301,18 @@ function composeVersus(
             .replace("{refute}", pickSeeded(REBUTTAL_REFUTES, seed + 3)),
         );
       }
+    } else {
+      parts.push(`${a} 말도 일리 있는데 실전에서 고르면 ${b} 쪽이 더 낫다.`);
     }
-    if (wiki && (seed % 3 !== 1)) parts.push(wikiLine("con", wiki, ctx, seed)!);
     return parts.join(" ");
   }
 
-  return `${a}는 ${pickSeeded(h.pro, i)}에서 강점이 있고, ${b}는 ${pickSeeded(h.con, i)}에서 강점이 있다. ${pickSeeded(h.neutral, seed)}.`;
+  const neutralLines = [
+    `둘 다 장단 있어서 ${pickSeeded(h.neutral, seed)}.`,
+    `${a}는 ${pickSeeded(h.pro, i)} 느낌이고, ${b}는 ${pickSeeded(h.con, i)} 쪽이라 그냥 취향 문제에 가까움.`,
+    `한쪽으로 못 박기 어렵다. ${pickSeeded(h.neutral, i)}.`,
+  ];
+  return pickSeeded(neutralLines, seed);
 }
 
 function composeChoice(
@@ -321,21 +340,19 @@ function composeChoice(
   const opp = lastOpponentMessage(personaId, history);
 
   if (personaId === "moderator") {
-    return pickSeeded(
-      [
-        `「${t}」에 대해 각자 선택과 근거를 말해 달라.`,
-        `후보가 갈리는 주제다. ${pickSeeded(h.neutral, seed)} 기준으로 비교해 달라.`,
-        wiki
-          ? wikiLine("moderator", wiki, ctx, seed)!
-          : `「${t}」의 결론을 내리려면 비교 기준을 먼저 정해야 한다.`,
-      ],
-      seed,
-    );
+    const lines = [
+      `「${t}」 각자 답 골라서 근거 말해 봐.`,
+      `후보가 갈리는 주제다. ${pickSeeded(h.neutral, seed)}.`,
+      round === 1 && wiki
+        ? moderatorWikiFlavor(wiki, ctx, seed)
+        : `비교 기준부터 맞추고 가자.`,
+    ].filter(Boolean) as string[];
+    return pickSeeded(lines, seed);
   }
 
   if (personaId === "pro") {
     const parts = [
-      `「${t}」에 대한 내 답은 ${proPick}이다. ${pickSeeded(h.pro, i)} 기준에서 타당하다.`,
+      `나는 ${proPick} 쪽인데, ${pickSeeded(h.pro, i)}.`,
     ];
     if (opp && round > 1) {
       const q = extractQuote(opp.content, seed);
@@ -347,13 +364,12 @@ function composeChoice(
         );
       }
     }
-    if (wiki) parts.push(wikiLine("pro", wiki, ctx, seed)!);
     return parts.join(" ");
   }
 
   if (personaId === "con") {
     const parts = [
-      `「${t}」에는 ${conPick}이 더 적합하다. ${pickSeeded(h.con, i)} 근거가 있다.`,
+      `차라리 ${conPick}이 낫다고 봄. ${pickSeeded(h.con, i)}.`,
     ];
     if (opp && round > 1) {
       const q = extractQuote(opp.content, seed);
@@ -365,11 +381,10 @@ function composeChoice(
         );
       }
     }
-    if (wiki) parts.push(wikiLine("con", wiki, ctx, seed)!);
     return parts.join(" ");
   }
 
-  return `「${t}」의 정답은 하나로 정하기 어렵다. ${pickSeeded(h.neutral, i)}에 따라 우선순위가 바뀐다. ${proPick}과 ${conPick} 모두 「${t}」에 대한 타당한 답이 될 수 있다.`;
+  return `「${t}」 정답 하나로 못 박기 어렵다. ${pickSeeded(h.neutral, i)}. ${proPick}이랑 ${conPick} 둘 다 일리 있음.`;
 }
 
 function composeDual(
@@ -389,21 +404,19 @@ function composeDual(
   const opp = lastOpponentMessage(personaId, history);
 
   if (personaId === "moderator") {
-    return pickSeeded(
-      [
-        `「${label}」에 대한 토론을 시작한다. 쟁점은 ${q}이다.`,
-        `주제를 벗어나지 말고 ${pickSeeded(h.neutral, seed)} 기준으로 말해 달라.`,
-        wiki
-          ? wikiLine("moderator", wiki, ctx, seed)!
-          : `지금까지 논의를 보면 ${q}에서 논점이 정리됐다. 상대 주장을 인용해 반박해 달라.`,
-      ],
-      seed,
-    );
+    const lines = [
+      `「${label}」 토론 시작. 쟁점은 ${q}.`,
+      `${pickSeeded(h.neutral, seed)} 쪽으로 말해 봐.`,
+      round === 1 && wiki
+        ? moderatorWikiFlavor(wiki, ctx, seed)
+        : `상대 말 짚고 반박해 봐.`,
+    ].filter(Boolean) as string[];
+    return pickSeeded(lines, seed);
   }
 
   if (personaId === "pro") {
     const parts = [
-      `${q} — 찬성 입장이다. ${pickSeeded(h.pro, i)} 근거가 있다.`,
+      `${q} — 찬성 쪽임. ${pickSeeded(h.pro, i)}.`,
     ];
     if (opp) {
       const qSnippet = extractQuote(opp.content, seed);
@@ -415,15 +428,12 @@ function composeDual(
         );
       }
     }
-    if (wiki && parts.length < 2) {
-      parts.push(wikiLine("pro", wiki, ctx, seed)!);
-    }
     return parts.join(" ");
   }
 
   if (personaId === "con") {
     const parts = [
-      `${q} — 반대 입장이다. ${pickSeeded(h.con, i)}.`,
+      `${q} — 반대 쪽임. ${pickSeeded(h.con, i)}.`,
     ];
     if (opp) {
       const qSnippet = extractQuote(opp.content, seed);
@@ -435,13 +445,10 @@ function composeDual(
         );
       }
     }
-    if (wiki && parts.length < 2) {
-      parts.push(wikiLine("con", wiki, ctx, seed)!);
-    }
     return parts.join(" ");
   }
 
-  return `${q}에 대한 단일 정답은 없다. 찬성은 ${pickSeeded(h.pro, i)} 쪽, 반대는 ${pickSeeded(h.con, i)} 쪽이다. ${pickSeeded(h.neutral, seed)} 기준으로 판단하는 것이 맞다.`;
+  return `${q} — 한쪽으로 못 박기 어렵다. 찬성은 ${pickSeeded(h.pro, i)} 쪽, 반대는 ${pickSeeded(h.con, i)} 쪽. ${pickSeeded(h.neutral, seed)}.`;
 }
 
 function composeCasual(
@@ -456,25 +463,23 @@ function composeCasual(
   const seed = seedFor(debateId, round, personaId, salt);
 
   if (personaId === "moderator") {
-    return pickSeeded(
-      [
-        `입력이 「${ctx.topic}」로 짧다. 토론 주제는 ${q}로 정리한다.`,
-        `주제가 짧아도 쟁점은 있다. 구체적인 근거를 말해 달라.`,
-        wiki
-          ? wikiLine("moderator", wiki, ctx, seed)!
-          : `이번 논의는 「${ctx.topic}」를 어떻게 해석하느냐의 문제다.`,
-      ],
-      seed,
-    );
+    const lines = [
+      `입력이 「${ctx.topic}」로 짧다. 토론은 ${q}로 가져가자.`,
+      `짧아도 쟁점은 있음. 근거 말해 봐.`,
+      round === 1 && wiki
+        ? moderatorWikiFlavor(wiki, ctx, seed)
+        : `「${ctx.topic}」를 어떻게 보느냐가 핵심임.`,
+    ].filter(Boolean) as string[];
+    return pickSeeded(lines, seed);
   }
 
   if (personaId === "pro") {
-    return `「${ctx.topic}」에는 의미가 있다. ${q} — 긍정적으로 본다. 짧은 표현도 관계를 여는 신호가 될 수 있다.`;
+    return `「${ctx.topic}」도 의미 있음. ${q} — 긍정적으로 봄. 짧아도 관계 여는 신호가 될 수 있음.`;
   }
   if (personaId === "con") {
-    return `「${ctx.topic}」만으로는 대화가 이어지기 어렵다. ${q} — 부정적으로 본다. 형식적 반복에 가깝다.`;
+    return `「${ctx.topic}」만으론 대화가 잘 안 이어짐. ${q} — 부정적으로 봄. 형식적 반복에 가까움.`;
   }
-  return `${q} — 상황에 따라 다르다. 관계의 친밀도와 맥락에 따라 평가가 달라진다.`;
+  return `${q} — 상황마다 다름. 친밀도랑 맥락에 따라 평가가 갈림.`;
 }
 
 function composeByMode(

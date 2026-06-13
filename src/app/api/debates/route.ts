@@ -8,6 +8,8 @@ import {
 import type { UserApiInput } from "@/lib/debate-llm-config";
 import { prefetchWikiContext } from "@/lib/wiki-context";
 import type { ApiLayout } from "@/lib/types";
+import { normalizeGeminiModel } from "@/lib/gemini-models";
+import { normalizeOpenaiModel } from "@/lib/openai-models";
 
 export async function GET() {
   const debates = await listDebates();
@@ -28,8 +30,8 @@ export async function POST(request: Request) {
       layout: (body.userApi.layout as ApiLayout) ?? "openai_only",
       openaiKey: body.userApi.openaiKey?.trim(),
       geminiKey: body.userApi.geminiKey?.trim(),
-      openaiModel: body.userApi.openaiModel ?? "gpt-4o-mini",
-      geminiModel: body.userApi.geminiModel ?? "gemini-2.0-flash",
+      openaiModel: normalizeOpenaiModel(body.userApi.openaiModel),
+      geminiModel: normalizeGeminiModel(body.userApi.geminiModel),
       maxTokenBudget: body.userApi.maxTokenBudget,
     };
     const validationError = validateUserApiInput(input);
@@ -47,7 +49,9 @@ export async function POST(request: Request) {
 
   prefetchWikiContext(topic.trim());
 
-  kickstartDebate(debate.id).catch(console.error);
+  kickstartDebate(debate.id).catch((err) =>
+    console.error(`[debates] kickstart ${debate.id}:`, err),
+  );
 
   return NextResponse.json(sanitizeDebateForClient(debate), { status: 201 });
 }
