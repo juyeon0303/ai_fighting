@@ -1,11 +1,11 @@
 import type { ApiLayout } from "./types";
 import { TURNS_PER_ROUND } from "./personas";
 
-/** 토론 1턴(발언 1개) 평균 토큰 — 히스토리+프롬프트+응답 합산 */
+/** 토론 1턴(발언 1개) 평균 토큰 — 압축 프롬프트·짧은 출력 기준 */
 const TOKENS_PER_TURN: Record<ApiLayout, number> = {
-  openai_only: 750,
-  gemini_only: 700,
-  gpt_vs_gemini: 850,
+  openai_only: 420,
+  gemini_only: 380,
+  gpt_vs_gemini: 450,
 };
 
 /** gpt-5.4-mini 기준 대략 blended $/1M tokens */

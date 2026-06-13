@@ -4,18 +4,20 @@ import type { TopicContext } from "./topic-context";
 import {
   buildDebatePrompt,
   generateMockTurn,
+  passesMinimumQuality,
   validateResponse,
 } from "./debate-content";
 import type { PersonaLlmRuntime } from "./debate-llm-config";
-import { DEBATE_STYLE } from "./debate-style";
 import { requestGeminiTurn } from "./gemini";
 import { DEFAULT_OPENAI_MODEL } from "./openai-models";
 import { parseTopic } from "./topic-context";
+import {
+  clampTurnContent,
+  maxOutputTokens,
+  softenFormalTone,
+} from "./debate-turn-budget";
 
-const RETRY_HINT =
-  "\n\n[재작성 필수] 방금 답은 너무 딱딱하거나 뻔함. 격식체(습니다/해주세요) 금지. 주제에 맞는 구체적 사실·논리로 다시 써.";
-
-const SYSTEM = `한국어 토론 AI. 무난하고 자연스러운 말투. 격식체·슬랭·억지 유머 금지. ${DEBATE_STYLE}`;
+const SYSTEM = "한국어 토론. 1~2문장. 평서체. 주제 핵심만.";
 
 export type LlmStopReason = "auth" | "quota" | null;
 
@@ -50,6 +52,28 @@ function mapApiError(error: unknown): LlmStopReason {
   return null;
 }
 
+function polishApiTurn(
+  ctx: TopicContext,
+  personaId: PersonaId,
+  raw: string,
+): string | null {
+  const softened = softenFormalTone(raw);
+  const clamped = clampTurnContent(softened, personaId);
+  if (!passesMinimumQuality(ctx, personaId, clamped)) return null;
+  if (hasBannedGeneric(clamped)) return null;
+  return clamped;
+}
+
+function hasBannedGeneric(text: string): boolean {
+  const banned = [
+    "양측 모두",
+    "둘러싼 토론",
+    "관점으로 말",
+    "점진적 도입",
+  ];
+  return banned.some((b) => text.includes(b));
+}
+
 async function requestOpenAiTurn(
   client: OpenAI,
   model: string,
@@ -57,7 +81,6 @@ async function requestOpenAiTurn(
   personaId: PersonaId,
   history: DebateMessage[],
   round: number,
-  retryHint = "",
 ): Promise<{ content: string | null; tokensUsed: number; stopReason: LlmStopReason }> {
   try {
     const response = await client.chat.completions.create({
@@ -66,11 +89,11 @@ async function requestOpenAiTurn(
         { role: "system", content: SYSTEM },
         {
           role: "user",
-          content: buildDebatePrompt(ctx, personaId, history, round) + retryHint,
+          content: buildDebatePrompt(ctx, personaId, history, round),
         },
       ],
-      max_tokens: 220,
-      temperature: 0.92,
+      max_tokens: maxOutputTokens(personaId),
+      temperature: 0.85,
     });
 
     return {
@@ -99,42 +122,41 @@ async function generateWithProvider(
   let lastStopReason: LlmStopReason = null;
   const source = runtime.provider === "gemini" ? "gemini" : "openai";
 
-  for (let attempt = 0; attempt < 1; attempt++) {
-    const prompt =
-      buildDebatePrompt(ctx, personaId, history, round) +
-      (attempt === 0 ? "" : RETRY_HINT);
+  const result =
+    runtime.provider === "gemini"
+      ? await requestGeminiTurn(
+          runtime.apiKey!,
+          runtime.model,
+          SYSTEM,
+          buildDebatePrompt(ctx, personaId, history, round),
+          maxOutputTokens(personaId),
+        )
+      : await requestOpenAiTurn(
+          new OpenAI({ apiKey: runtime.apiKey }),
+          runtime.model,
+          ctx,
+          personaId,
+          history,
+          round,
+        );
 
-    const result =
-      runtime.provider === "gemini"
-        ? await requestGeminiTurn(
-            runtime.apiKey!,
-            runtime.model,
-            SYSTEM,
-            prompt,
-          )
-        : await requestOpenAiTurn(
-            new OpenAI({ apiKey: runtime.apiKey }),
-            runtime.model,
-            ctx,
-            personaId,
-            history,
-            round,
-            attempt === 0 ? "" : RETRY_HINT,
-          );
+  totalTokens += result.tokensUsed;
 
-    totalTokens += result.tokensUsed;
-
-    if (result.stopReason) {
-      lastStopReason = result.stopReason;
-      break;
-    }
-
-    if (!result.content) continue;
-
-    const validation = validateResponse(ctx, personaId, result.content);
-    if (validation.ok) {
+  if (result.stopReason) {
+    lastStopReason = result.stopReason;
+  } else if (result.content) {
+    const polished = polishApiTurn(ctx, personaId, result.content);
+    if (polished && validateResponse(ctx, personaId, polished).ok) {
       return {
-        content: result.content,
+        content: polished,
+        tokensUsed: totalTokens,
+        source,
+        stopReason: null,
+      };
+    }
+    if (polished && passesMinimumQuality(ctx, personaId, polished)) {
+      return {
+        content: polished,
         tokensUsed: totalTokens,
         source,
         stopReason: null,
@@ -151,9 +173,9 @@ async function generateWithProvider(
   );
 
   return {
-    content: fallback,
+    content: clampTurnContent(fallback, personaId),
     tokensUsed: totalTokens,
-    source: "engine",
+    source: totalTokens > 0 ? source : "engine",
     stopReason: lastStopReason,
   };
 }
@@ -194,7 +216,7 @@ async function generateFreeTurn(
   );
 
   return {
-    content,
+    content: clampTurnContent(content, personaId),
     tokensUsed: 0,
     source: "engine",
     stopReason: null,
@@ -217,7 +239,7 @@ export async function generateEngineTurn(
     debateId,
   );
   return {
-    content,
+    content: clampTurnContent(content, personaId),
     tokensUsed: 0,
     source: "engine",
     stopReason: null,

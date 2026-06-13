@@ -1,8 +1,8 @@
 import type { DebateMessage, PersonaId } from "./types";
 import type { DebateMode, TopicContext, TopicDomain } from "./topic-context";
 import { getPersonaStance } from "./topic-context";
-import { getPersona } from "./personas";
 import { DEBATE_STYLE, DEBATE_BAD_EXAMPLES } from "./debate-style";
+import { compactHistory } from "./debate-turn-budget";
 
 const BANNED_VAGUE = [
   "양측 모두",
@@ -120,14 +120,6 @@ function isTooFormal(text: string): boolean {
   return FORMAL_PATTERN.test(text);
 }
 
-const PERSONA_GOOD_EXAMPLE: Record<PersonaId, string> = {
-  moderator:
-    "이번 주제는 양자 불멸이다. 다중세계 해석을 전제로 할지부터 정리하고, 각자 근거를 말해 달라.",
-  pro: "양자 불멸은 이론적으로 설명 가능하다고 본다. 다중세계 해석에서는 관측자가 죽지 않는 분기가 남는다.",
-  con: "양자 불멸은 현실 적용이 어렵다. 데코히어런스 때문에 거시 세계에서는 중첩 상태가 유지되지 않는다.",
-  neutral:
-    "찬성은 다중세계 해석, 반대는 데코히어런스를 중심에 둔다. '가능'의 정의를 먼저 맞춰야 한다.",
-};
 
 export interface ValidationResult {
   ok: boolean;
@@ -166,7 +158,7 @@ export function validateResponse(
     }
   }
 
-  if (content.length < 15) issues.push("too_short");
+  if (content.length < 12) issues.push("too_short");
 
   return { ok: issues.length === 0, issues };
 }
@@ -184,15 +176,43 @@ export async function generateMockTurn(
 
 function modeRules(ctx: TopicContext): string {
   const rules: Record<DebateMode, string> = {
-    versus: `대결 토론. 찬성=${ctx.sideA} 편 ONLY, 반대=${ctx.sideB} 편 ONLY. ${ctx.sideA}와 ${ctx.sideB} 이름을 반드시 언급.`,
-    comparison: `비교 토론. 찬성=${ctx.sideA} 우위, 반대=${ctx.sideB} 우위. 두 대상 이름 필수.`,
-    proposition: `찬반 토론. 주제 문장에 직접 답하세요: ${ctx.debateQuestion}`,
-    choice: `선택 토론. 서로 다른 후보/답을 들고 ${ctx.topic}에 답하세요.`,
-    wh_question: `질문 토론. ${ctx.debateQuestion}에 대해 서로 다른 설명/입장.`,
-    casual: `짧은 입력 「${ctx.topic}」→ 실제 토론 주제: ${ctx.debateQuestion}`,
-    topic: `주제 토론. ${ctx.debateQuestion}`,
+    versus: `찬=${ctx.sideA}|반=${ctx.sideB}|이름 필수`,
+    comparison: `찬=${ctx.sideA}우위|반=${ctx.sideB}우위`,
+    proposition: `답:${ctx.debateQuestion}`,
+    choice: `후보 달리|${ctx.topic}`,
+    wh_question: `Q:${ctx.debateQuestion}`,
+    casual: `입력「${ctx.topic}」→${ctx.debateQuestion}`,
+    topic: ctx.debateQuestion,
   };
   return rules[ctx.mode];
+}
+
+export function passesMinimumQuality(
+  ctx: TopicContext,
+  personaId: PersonaId,
+  content: string,
+): boolean {
+  const text = content.trim();
+  if (text.length < 12) return false;
+  if (personaId !== "moderator" && !hasAnchor(ctx, text)) return false;
+  if (
+    (ctx.mode === "versus" || ctx.mode === "comparison") &&
+    ctx.sideA &&
+    ctx.sideB
+  ) {
+    if (personaId === "pro" && !text.includes(ctx.sideA)) return false;
+    if (personaId === "con" && !text.includes(ctx.sideB)) return false;
+  }
+  return true;
+}
+
+function personaHint(
+  personaId: PersonaId,
+  hints: (typeof DOMAIN_HINTS)[TopicDomain],
+): string {
+  if (personaId === "pro") return hints.pro.slice(0, 2).join("/");
+  if (personaId === "con") return hints.con.slice(0, 2).join("/");
+  return hints.neutral.slice(0, 2).join("/");
 }
 
 export function buildDebatePrompt(
@@ -201,45 +221,42 @@ export function buildDebatePrompt(
   history: DebateMessage[],
   round: number,
 ): string {
-  const persona = getPersona(personaId);
   const stance = getPersonaStance(personaId, ctx);
   const hints = DOMAIN_HINTS[ctx.domain];
+  const lastOpp = history
+    .slice()
+    .reverse()
+    .find(
+      (m) =>
+        (personaId === "pro" && m.personaId === "con") ||
+        (personaId === "con" && m.personaId === "pro"),
+    );
 
-  const historyText = history
-    .slice(-8)
-    .map((m) => `[${getPersona(m.personaId).name}] ${m.content}`)
+  const oppLine = lastOpp
+    ? `상대방금:${truncateSnippet(lastOpp.content, 70)}`
+    : "";
+
+  return [
+    `주제:${ctx.topic}`,
+    `쟁점:${ctx.debateQuestion}`,
+    `역할:${stance}`,
+    `R${round}`,
+    modeRules(ctx),
+    `각도:${personaHint(personaId, hints)}`,
+    `직전:${compactHistory(history)}`,
+    oppLine,
+    DEBATE_STYLE,
+    `금지:${DEBATE_BAD_EXAMPLES}`,
+    "지금 1~2문장만. 순수 텍스트.",
+  ]
+    .filter(Boolean)
     .join("\n");
+}
 
-  return `당신은 한국어 토론 AI "${persona.name}"입니다. 무난하고 자연스럽게, 근거 중심으로 말한다.
-
-【원본 주제】${ctx.topic}
-【토론 형식】${ctx.brief}
-【실제 쟁점】${ctx.debateQuestion}
-【분야】${ctx.domain}
-【역할】${stance}
-【라운드】${round}
-
-논거 방향 (이 단어를 그대로 나열하지 말고, 주제에 맞는 구체적 사실로 풀어써):
-- 긍정 쪽이 쓸 만한 각도: ${hints.pro.join(" / ")}
-- 비판 쪽이 쓸 만한 각도: ${hints.con.join(" / ")}
-
-이전 발언:
-${historyText || "(없음)"}
-
-${DEBATE_STYLE}
-
-절대 이렇게 쓰지 마:
-${DEBATE_BAD_EXAMPLES}
-
-이렇게 써 (톤·구체성 참고, 내용은 주제에 맞게):
-${PERSONA_GOOD_EXAMPLE[personaId]}
-
-규칙:
-- ${modeRules(ctx)}
-- 주제와 무관한 정책·경제 일반론 금지
-- 2~4문장, 짧고 세게
-- 상대 말 직접 반박 (사회자는 쟁점 짚고 진행)
-- 순수 텍스트만`;
+function truncateSnippet(text: string, max: number): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
 }
 
 export async function simulateFullRound(

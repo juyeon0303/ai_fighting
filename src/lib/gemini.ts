@@ -38,8 +38,11 @@ function authModes(apiKey: string): Array<"header" | "query"> {
   return ["header", "query"];
 }
 
-function buildGenerationConfig(model: string): Record<string, unknown> {
-  const base = { maxOutputTokens: 220 };
+function buildGenerationConfig(
+  model: string,
+  maxOutputTokens: number,
+): Record<string, unknown> {
+  const base = { maxOutputTokens };
   // Gemini 3.x는 temperature 미권장 — 400 오류 방지
   if (!model.startsWith("gemini-3")) {
     return { ...base, temperature: 0.9 };
@@ -99,6 +102,7 @@ export async function requestGeminiTurn(
   model: string,
   system: string,
   user: string,
+  outputTokenLimit = 90,
 ): Promise<{
   content: string | null;
   tokensUsed: number;
@@ -113,7 +117,7 @@ export async function requestGeminiTurn(
     const body = {
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: "user", parts: [{ text: user }] }],
-      generationConfig: buildGenerationConfig(candidateModel),
+      generationConfig: buildGenerationConfig(candidateModel, outputTokenLimit),
     };
 
     for (const auth of authModes(apiKey)) {
