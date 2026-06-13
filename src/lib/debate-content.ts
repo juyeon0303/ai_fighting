@@ -4,7 +4,7 @@ import { getPersonaStance } from "./topic-context";
 import { DEBATE_STYLE, DEBATE_BAD_EXAMPLES } from "./debate-style";
 import { compactHistory } from "./debate-turn-budget";
 import type { DebateSources } from "./debate-sources";
-import { wikiCueForPrompt } from "./debate-sources";
+import { factCueForPrompt } from "./debate-sources";
 import { FRESHNESS_RULE, pickNovelLens } from "./debate-novelty";
 import {
   acceptDebateTurn,
@@ -236,11 +236,18 @@ function personaHint(
 }
 
 function rebuttalRule(personaId: PersonaId, round: number): string {
-  if (round <= 1) return "";
   if (personaId === "neutral") {
-    return "중립:양쪽요약금지.쟁점한줄만.";
+    return "중립:한쪽편금지.나는OO편금지.양쪽이름병렬.위키인용금지.";
   }
+  if (round <= 1) return "";
   return "상대방금인용후반박필수.";
+}
+
+function exampleLine(ctx: TopicContext): string {
+  if (ctx.sideA && ctx.sideB) {
+    return `예:나는 ${ctx.sideA} 쪽인데 손목·컨디션 변수 빼면 지금 비교에선 설득력 있음.`;
+  }
+  return "예:나는 이쪽인데 숨은 변수 하나 짚고 말할게.";
 }
 
 export function buildDebatePrompt(
@@ -265,9 +272,9 @@ export function buildDebatePrompt(
     ? `상대방금:${truncateSnippet(lastOpp.content, 80)}`
     : "";
 
-  const wikiLine =
+  const factLine =
     sources && personaId !== "moderator"
-      ? wikiCueForPrompt(sources, ctx, personaId, history, round)
+      ? factCueForPrompt(sources, ctx, personaId, history, round)
       : null;
 
   return [
@@ -277,7 +284,7 @@ export function buildDebatePrompt(
     modeRules(ctx),
     `이번각도:${personaHint(personaId, hints, round)}`,
     `신선렌즈:${pickNovelLens(ctx.domain, round, personaId)}`,
-    wikiLine ? `위키참고:${wikiLine}` : null,
+    factLine ? `팩트참고:${factLine}(출처말하지말것)` : null,
     `직전:${compactHistory(history)}`,
     `이미씀금지:${bannedPhraseReminder(history)}`,
     oppLine,
@@ -285,7 +292,7 @@ export function buildDebatePrompt(
     DEBATE_STYLE,
     FRESHNESS_RULE,
     `금지:${DEBATE_BAD_EXAMPLES}`,
-    "예:나는 페이커 쪽인데 손목 부담 적은 시즌엔 월드 성적이 더 설득력 있음.",
+    exampleLine(ctx),
   ]
     .filter(Boolean)
     .join("\n");

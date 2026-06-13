@@ -74,4 +74,4 @@ export function pickNovelLens(
 }
 
 export const FRESHNESS_RULE =
-  "뻔한 말·이미 나온 논점 금지. 위키·새각도에서 신선한 근거 1개만.";
+  "뻔한 말·이미 나온 논점 금지. 팩트는 자연스럽게 녹이고 위키·자료 인용 금지.";

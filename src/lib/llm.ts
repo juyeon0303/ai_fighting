@@ -20,7 +20,7 @@ import {
 } from "./debate-turn-budget";
 
 const SYSTEM =
-  "한국어 토론. 친구 말투. 1~2문장. 위키 사실 활용. 뻔한 말·반복 금지.";
+  "한국어 토론. 친구 말투. 1~2문장. 팩트는 자연스럽게. 위키·자료 인용 금지. 중립은 한쪽 편 금지.";
 
 export type LlmStopReason = "auth" | "quota" | null;
 
@@ -64,7 +64,7 @@ function polishApiTurn(
   const softened = softenFormalTone(raw);
   const clamped = clampTurnContent(softened, personaId);
   if (!passesMinimumQuality(ctx, personaId, clamped)) return null;
-  if (!acceptDebateTurn(history, personaId, clamped)) return null;
+  if (!acceptDebateTurn(history, personaId, clamped, ctx)) return null;
   if (!validateResponse(ctx, personaId, clamped).ok) return null;
   return clamped;
 }

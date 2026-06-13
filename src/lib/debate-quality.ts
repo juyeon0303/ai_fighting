@@ -1,4 +1,6 @@
 import type { DebateMessage, PersonaId } from "./types";
+import type { TopicContext } from "./topic-context";
+import { speechViolatesGroundTruth } from "./domain-ground-truth";
 
 const ESSAY_MARKERS = [
   "압도적인",
@@ -58,6 +60,53 @@ function overlapRatio(a: string, b: string): number {
 export function isEssayTone(text: string): boolean {
   const hits = ESSAY_MARKERS.filter((m) => text.includes(m)).length;
   return hits >= 2;
+}
+
+/** 중립이 한쪽 편을 드는 경우 */
+export function isNeutralTakingSide(
+  ctx: TopicContext,
+  content: string,
+): boolean {
+  if (ctx.mode !== "versus" && ctx.mode !== "comparison") return false;
+  if (!ctx.sideA || !ctx.sideB) return false;
+
+  if (/나는\s*.{0,10}(편|쪽)/.test(content)) return true;
+
+  const hasA = content.includes(ctx.sideA);
+  const hasB = content.includes(ctx.sideB);
+  const bias = /압도적|더\s*낫|우위|뛰어나|설득력|낫다고\s*봄|최적화/;
+
+  if (hasA && !hasB && bias.test(content)) return true;
+  if (hasB && !hasA && bias.test(content)) return true;
+  if (/나는/.test(content) && (hasA || hasB)) return true;
+
+  return false;
+}
+
+/** 위키·자료 인용 티가 나는 어색한 문장 */
+export function hasAwkwardSourceCitation(content: string): boolean {
+  return /위키|자료상|참고로\s*위키|흔한\s*말\s*말고|쪽이\s*포인트임|\(위키\)/.test(
+    content,
+  );
+}
+
+/** 선수·팀 팩트 오류 (예: 쵸비=T1) */
+export function hasGroundTruthViolation(
+  ctx: TopicContext,
+  personaId: PersonaId,
+  content: string,
+): boolean {
+  if (ctx.domain !== "esports") return false;
+
+  const side =
+    personaId === "pro"
+      ? ctx.sideA
+      : personaId === "con"
+        ? ctx.sideB
+        : null;
+  if (side && speechViolatesGroundTruth(side, content)) return true;
+
+  return false;
 }
 
 /** 중립이 찬/반 요약 템플릿으로 도는 경우 */
@@ -122,11 +171,19 @@ export function acceptDebateTurn(
   history: DebateMessage[],
   personaId: PersonaId,
   content: string,
+  ctx?: TopicContext,
 ): boolean {
   if (isEssayTone(content)) return false;
   if (isTooRepetitive(history, content, personaId)) return false;
+  if (hasAwkwardSourceCitation(content)) return false;
   if (personaId === "neutral" && isNeutralSummaryTemplate(content)) {
     return false;
+  }
+  if (ctx) {
+    if (personaId === "neutral" && isNeutralTakingSide(ctx, content)) {
+      return false;
+    }
+    if (hasGroundTruthViolation(ctx, personaId, content)) return false;
   }
   return true;
 }

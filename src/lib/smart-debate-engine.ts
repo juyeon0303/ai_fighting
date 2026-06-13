@@ -3,7 +3,7 @@ import type { DebateMode, TopicContext, TopicDomain } from "./topic-context";
 import { validateResponse } from "./debate-content";
 import { acceptDebateTurn } from "./debate-quality";
 import type { DebateSources } from "./debate-sources";
-import { getDebateSources, wikiLineForSpeech } from "./debate-sources";
+import { getDebateSources, speechFactLine } from "./debate-sources";
 import { pickNovelLens } from "./debate-novelty";
 import {
   hashSeed,
@@ -237,20 +237,11 @@ function freshnessFlavor(
 ): string | null {
   if (personaId === "moderator") return null;
 
+  const factLine =
+    speechFactLine(sources, ctx, personaId, history, round, seed) ?? null;
+  if (factLine) return factLine;
+
   const lens = pickNovelLens(ctx.domain, round, personaId);
-  const wikiLine =
-    wikiLineForSpeech(sources, ctx, personaId, history, round, seed) ?? null;
-
-  if (wikiLine) {
-    return pickSeeded(
-      [
-        `${wikiLine} ${lens} 관점이 핵심임.`,
-        `${lens} 보면 ${wikiLine}`,
-      ],
-      seed,
-    );
-  }
-
   return pickSeeded(
     [
       `뻔한 말 말고 ${lens} 쪽으로 보면 답이 갈림.`,
@@ -361,8 +352,7 @@ function composeVersus(
   }
 
   const neutralLines = [
-    `둘 다 장단 있어서 ${pickSeeded(h.neutral, seed)}.`,
-    `${a}는 ${pickSeeded(h.pro, i)} 느낌이고, ${b}는 ${pickSeeded(h.con, i)} 쪽이라 그냥 취향 문제에 가까움.`,
+    `${a}는 ${pickSeeded(h.pro, i)} 느낌이고, ${b}는 ${pickSeeded(h.con, i)} 쪽이라 기준만 다르면 답이 갈림.`,
     `한쪽으로 못 박기 어렵다. ${pickSeeded(h.neutral, i)}.`,
     fresh,
   ].filter(Boolean) as string[];
@@ -626,7 +616,7 @@ export async function generateSmartTurn(
 
     if (
       validateResponse(ctx, personaId, content).ok &&
-      acceptDebateTurn(history, personaId, content)
+      acceptDebateTurn(history, personaId, content, ctx)
     ) {
       return content;
     }
