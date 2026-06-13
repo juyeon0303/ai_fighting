@@ -43,8 +43,34 @@ OPENAI_MODEL=gpt-4o-mini
 ```
 
 - **백그라운드 워커**: `instrumentation.ts`에서 서버 시작 시 자동 실행
-- **저장소**: `data/debates.json` (파일 기반, 별도 DB 불필요)
+- **저장소**: Supabase PostgreSQL (권장) 또는 로컬 `data/debates.json` 폴백
 - **AI 페르소나**: 찬성(🟢) / 반대(🔴) / 중립(🔵) / 사회자(🟣)
+
+## Supabase 연동 (토론 영구 저장)
+
+Supabase를 설정하면 토론·발언·타임라인·보고서가 PostgreSQL에 저장됩니다. Render 재배포해도 데이터가 유지됩니다.
+
+### 1. Supabase 프로젝트 생성
+
+1. [supabase.com](https://supabase.com) → New Project
+2. **SQL Editor**에서 `supabase/schema.sql` 내용 실행
+
+### 2. 환경변수 설정
+
+`.env.local` (로컬) 또는 Render Environment:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...   # Settings → API → service_role
+```
+
+> `service_role` 키는 서버 전용입니다. 클라이언트에 노출하지 마세요.
+
+### 3. 동작 확인
+
+`/api/health` 응답에서 `"storage": "supabase"` 확인
+
+Supabase 미설정 시 자동으로 로컬 파일(`data/debates.json`)에 저장됩니다.
 
 ## Render 배포
 
@@ -66,7 +92,7 @@ git push -u origin main
 2. **New → Blueprint**
 3. GitHub repo 연결
 4. `render.yaml` 자동 인식 → **Apply**
-5. Environment에서 `OPENAI_API_KEY` 입력 (선택)
+5. Environment에서 `OPENAI_API_KEY`, Supabase 키 입력
 
 ### 3. 수동 배포 (Blueprint 없이)
 
@@ -76,19 +102,18 @@ git push -u origin main
    - **Build Command**: `npm ci && npm run build`
    - **Start Command**: `npm start`
    - **Health Check Path**: `/api/health`
-4. **Disks** 탭 → Persistent Disk 추가:
-   - Mount Path: `/opt/render/project/src/data`
-   - Size: 1 GB
 5. Environment Variables:
    - `OPENAI_API_KEY` (선택)
    - `OPENAI_MODEL` = `gpt-4o-mini`
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
 
 ### Render 주의사항
 
 | 항목 | 설명 |
 |------|------|
 | **플랜** | `starter` 이상 권장. Free 플랜은 15분 미사용 시 슬립 → 백그라운드 토론 중단 |
-| **디스크** | `data/debates.json` 영속화를 위해 Persistent Disk 필수 |
+| **저장소** | Supabase 사용 시 Persistent Disk 불필요 |
 | **포트** | Render가 `PORT` 환경변수를 자동 주입 — `npm start`가 자동 대응 |
 | **리전** | `render.yaml` 기본값 `singapore`. 필요 시 `oregon`, `frankfurt` 등으로 변경 |
 

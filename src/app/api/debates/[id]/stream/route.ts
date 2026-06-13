@@ -13,7 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const debate = getDebate(id);
+  const debate = await getDebate(id);
 
   if (!debate) {
     return new Response("Not found", { status: 404 });
@@ -22,9 +22,11 @@ export async function GET(
   startDebateWorker();
 
   const encoder = new TextEncoder();
-  const existingMessages = getDebateMessages(id);
-  const timeline = getTimelineEvents(id);
-  const report = getDebateReport(id);
+  const [existingMessages, timeline, report] = await Promise.all([
+    getDebateMessages(id),
+    getTimelineEvents(id),
+    getDebateReport(id),
+  ]);
 
   const stream = new ReadableStream({
     start(controller) {

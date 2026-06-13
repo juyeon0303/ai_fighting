@@ -8,6 +8,7 @@ import type {
   TimelineEvent,
 } from "@/lib/types";
 import { PERSONAS } from "@/lib/personas";
+import { parseTopic, getPersonaStance } from "@/lib/topic-context";
 import { ArenaEffects } from "./ArenaEffects";
 import { DebateTimeline } from "./DebateTimeline";
 import { DebateReportPanel } from "./DebateReportPanel";
@@ -141,6 +142,8 @@ export function DebateArena({ debateId }: DebateArenaProps) {
     return order[messages.length % 4];
   })();
 
+  const topicCtx = topic ? parseTopic(topic) : null;
+
   return (
     <div className="relative flex h-full">
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -154,6 +157,9 @@ export function DebateArena({ debateId }: DebateArenaProps) {
           <div className="flex items-start justify-between gap-4">
             <div>
               <h1 className="text-lg font-bold text-white">{topic}</h1>
+            {topicCtx && (
+              <p className="mt-1 text-xs text-white/35">{topicCtx.brief}</p>
+            )}
               <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-white/40">
                 <span
                   className={`inline-flex items-center gap-1.5 ${connected ? "text-emerald-400" : "text-white/30"}`}
@@ -215,17 +221,21 @@ export function DebateArena({ debateId }: DebateArenaProps) {
             </div>
           </div>
 
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {(Object.keys(PERSONAS) as PersonaId[]).map((id) => {
               const p = PERSONAS[id];
               const isActive = lastPersonaId === id && status === "active";
+              const label =
+                topicCtx && (id === "pro" || id === "con" || id === "moderator" || id === "neutral")
+                  ? getPersonaStance(id, topicCtx).split("—")[0].trim()
+                  : p.name;
               return (
                 <div
                   key={id}
                   className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition ${isActive ? "bg-white/10 ring-1 ring-white/20" : "opacity-40"}`}
                   style={isActive ? { color: p.color } : undefined}
                 >
-                  {p.emoji} {p.name}
+                  {p.emoji} {label}
                 </div>
               );
             })}

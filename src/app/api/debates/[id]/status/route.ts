@@ -8,7 +8,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const debate = getDebate(id);
+  const debate = await getDebate(id);
 
   if (!debate) {
     return NextResponse.json({ error: "토론을 찾을 수 없습니다." }, { status: 404 });
@@ -23,10 +23,10 @@ export async function PATCH(
 
   if (status === "ended" && debate.status !== "ended") {
     await manualEndDebate(id);
-    const updated = getDebate(id);
+    const updated = await getDebate(id);
     return NextResponse.json(updated);
   }
 
-  const updated = updateDebateStatus(id, status);
+  const updated = await updateDebateStatus(id, status);
   return NextResponse.json(updated);
 }

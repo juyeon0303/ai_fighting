@@ -29,12 +29,12 @@ async function analyzeRound(
   debateId: string,
   round: number,
 ): Promise<void> {
-  if (hasTimelineForRound(debateId, round)) return;
+  if (await hasTimelineForRound(debateId, round)) return;
 
-  const debate = getDebate(debateId);
+  const debate = await getDebate(debateId);
   if (!debate) return;
 
-  const messages = getDebateMessages(debateId);
+  const messages = await getDebateMessages(debateId);
   const eventData = await analyzeRoundForTimeline(
     debate.topic,
     messages,
@@ -43,14 +43,14 @@ async function analyzeRound(
 
   if (!eventData) return;
 
-  const event = addTimelineEvent(eventData);
+  const event = await addTimelineEvent(eventData);
   debateEvents.emit("timeline", { debateId, event });
 }
 
 export async function finalizeDebate(debateId: string): Promise<void> {
   if (finalizing.has(debateId)) return;
 
-  const existing = getDebateReport(debateId);
+  const existing = await getDebateReport(debateId);
   if (existing) {
     debateEvents.emit("report", { debateId, report: existing });
     return;
@@ -59,17 +59,17 @@ export async function finalizeDebate(debateId: string): Promise<void> {
   finalizing.add(debateId);
 
   try {
-    const debate = getDebate(debateId);
+    const debate = await getDebate(debateId);
     if (!debate) return;
 
-    updateReportStatus(debateId, "generating");
+    await updateReportStatus(debateId, "generating");
     debateEvents.emit("report-status", {
       debateId,
       reportStatus: "generating",
     });
 
-    const messages = getDebateMessages(debateId);
-    const timeline = getTimelineEvents(debateId);
+    const messages = await getDebateMessages(debateId);
+    const timeline = await getTimelineEvents(debateId);
 
     const reportData = await generateFinalReport(
       debate.topic,
@@ -77,7 +77,7 @@ export async function finalizeDebate(debateId: string): Promise<void> {
       timeline,
     );
 
-    const report = saveDebateReport({
+    const report = await saveDebateReport({
       ...reportData,
       debateId,
       generatedAt: new Date().toISOString(),
@@ -90,7 +90,7 @@ export async function finalizeDebate(debateId: string): Promise<void> {
 }
 
 async function endDebate(debateId: string): Promise<void> {
-  updateDebateStatus(debateId, "ended");
+  await updateDebateStatus(debateId, "ended");
   debateEvents.emit("debate-ended", { debateId });
   await finalizeDebate(debateId);
 }
@@ -100,10 +100,10 @@ async function processDebateTurn(debateId: string): Promise<DebateMessage | null
   processing.add(debateId);
 
   try {
-    const debate = getDebate(debateId);
+    const debate = await getDebate(debateId);
     if (!debate || debate.status !== "active") return null;
 
-    const messages = getDebateMessages(debateId);
+    const messages = await getDebateMessages(debateId);
     const round = Math.floor(messages.length / 4) + 1;
 
     if (round > debate.maxRounds) {
@@ -119,10 +119,10 @@ async function processDebateTurn(debateId: string): Promise<DebateMessage | null
       round,
     );
 
-    const message = addMessage(debateId, personaId, content, round);
+    const message = await addMessage(debateId, personaId, content, round);
     debateEvents.emit("message", { debateId, message });
 
-    const updatedMessages = getDebateMessages(debateId);
+    const updatedMessages = await getDebateMessages(debateId);
     if (updatedMessages.length % 4 === 0) {
       analyzeRound(debateId, round).catch(console.error);
     }
@@ -134,10 +134,10 @@ async function processDebateTurn(debateId: string): Promise<DebateMessage | null
 }
 
 async function tick(): Promise<void> {
-  const activeDebates = getActiveDebates();
+  const activeDebates = await getActiveDebates();
 
   for (const debate of activeDebates) {
-    const messages = getDebateMessages(debate.id);
+    const messages = await getDebateMessages(debate.id);
     const now = Date.now();
 
     if (messages.length === 0) continue;
@@ -175,7 +175,7 @@ export async function kickstartDebate(debateId: string): Promise<void> {
 }
 
 export async function manualEndDebate(debateId: string): Promise<void> {
-  const debate = getDebate(debateId);
+  const debate = await getDebate(debateId);
   if (!debate || debate.status === "ended") return;
   await endDebate(debateId);
 }

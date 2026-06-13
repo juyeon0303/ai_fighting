@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { v4 as uuidv4 } from "uuid";
+import { getSupabase, isSupabaseEnabled } from "./supabase";
 import type {
   Debate,
   DebateMessage,
@@ -10,7 +11,7 @@ import type {
   TimelineEvent,
 } from "./types";
 
-interface Database {
+interface FileDatabase {
   debates: Debate[];
   messages: DebateMessage[];
   timelineEvents: TimelineEvent[];
@@ -20,13 +21,69 @@ interface Database {
 const DATA_DIR = join(process.cwd(), "data");
 const DB_PATH = join(DATA_DIR, "debates.json");
 
-function ensureDb(): Database {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
-  }
+// ─── Row mappers (Supabase snake_case → app camelCase) ───
+
+function rowToDebate(row: Record<string, unknown>): Debate {
+  return {
+    id: row.id as string,
+    topic: row.topic as string,
+    status: row.status as DebateStatus,
+    round: row.round as number,
+    maxRounds: row.max_rounds as number,
+    turnIntervalMs: row.turn_interval_ms as number,
+    lastTurnAt: (row.last_turn_at as string) ?? null,
+    reportStatus: (row.report_status as ReportStatus) ?? "none",
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function rowToMessage(row: Record<string, unknown>): DebateMessage {
+  return {
+    id: row.id as string,
+    debateId: row.debate_id as string,
+    personaId: row.persona_id as DebateMessage["personaId"],
+    content: row.content as string,
+    round: row.round as number,
+    createdAt: row.created_at as string,
+  };
+}
+
+function rowToTimeline(row: Record<string, unknown>): TimelineEvent {
+  return {
+    id: row.id as string,
+    debateId: row.debate_id as string,
+    type: row.type as TimelineEvent["type"],
+    title: row.title as string,
+    summary: row.summary as string,
+    round: row.round as number,
+    messageId: (row.message_id as string) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
+function rowToReport(row: Record<string, unknown>): DebateReport {
+  return {
+    debateId: row.debate_id as string,
+    title: row.title as string,
+    executiveSummary: row.executive_summary as string,
+    consensusPoints: row.consensus_points as string[],
+    proArguments: row.pro_arguments as string[],
+    conArguments: row.con_arguments as string[],
+    unresolvedIssues: row.unresolved_issues as string[],
+    finalConclusion: row.final_conclusion as string,
+    recommendation: row.recommendation as string,
+    generatedAt: row.generated_at as string,
+  };
+}
+
+// ─── File DB (로컬 폴백) ───
+
+function ensureFileDb(): FileDatabase {
+  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 
   if (!existsSync(DB_PATH)) {
-    const empty: Database = {
+    const empty: FileDatabase = {
       debates: [],
       messages: [],
       timelineEvents: [],
@@ -36,43 +93,75 @@ function ensureDb(): Database {
     return empty;
   }
 
-  const raw = JSON.parse(readFileSync(DB_PATH, "utf-8")) as Partial<Database>;
+  const raw = JSON.parse(readFileSync(DB_PATH, "utf-8")) as Partial<FileDatabase>;
   return {
-    debates: (raw.debates ?? []).map(normalizeDebate),
+    debates: (raw.debates ?? []).map((d) => ({
+      ...d,
+      reportStatus: d.reportStatus ?? "none",
+    })),
     messages: raw.messages ?? [],
     timelineEvents: raw.timelineEvents ?? [],
     reports: raw.reports ?? [],
   };
 }
 
-function normalizeDebate(debate: Debate): Debate {
-  return {
-    ...debate,
-    reportStatus: debate.reportStatus ?? "none",
-  };
-}
-
-function saveDb(db: Database): void {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
-  }
+function saveFileDb(db: FileDatabase): void {
+  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
   writeFileSync(DB_PATH, JSON.stringify(db, null, 2), "utf-8");
 }
 
-export function listDebates(): Debate[] {
-  const db = ensureDb();
+// ─── Public API ───
+
+export function getStorageMode(): "supabase" | "file" {
+  return isSupabaseEnabled() ? "supabase" : "file";
+}
+
+export async function listDebates(): Promise<Debate[]> {
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("debates")
+      .select("*")
+      .order("updated_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(rowToDebate);
+  }
+
+  const db = ensureFileDb();
   return db.debates.sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   );
 }
 
-export function getDebate(id: string): Debate | null {
-  const db = ensureDb();
+export async function getDebate(id: string): Promise<Debate | null> {
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("debates")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? rowToDebate(data) : null;
+  }
+
+  const db = ensureFileDb();
   return db.debates.find((d) => d.id === id) ?? null;
 }
 
-export function getDebateMessages(debateId: string): DebateMessage[] {
-  const db = ensureDb();
+export async function getDebateMessages(debateId: string): Promise<DebateMessage[]> {
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("debate_messages")
+      .select("*")
+      .eq("debate_id", debateId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map(rowToMessage);
+  }
+
+  const db = ensureFileDb();
   return db.messages
     .filter((m) => m.debateId === debateId)
     .sort(
@@ -81,8 +170,19 @@ export function getDebateMessages(debateId: string): DebateMessage[] {
     );
 }
 
-export function getTimelineEvents(debateId: string): TimelineEvent[] {
-  const db = ensureDb();
+export async function getTimelineEvents(debateId: string): Promise<TimelineEvent[]> {
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("timeline_events")
+      .select("*")
+      .eq("debate_id", debateId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map(rowToTimeline);
+  }
+
+  const db = ensureFileDb();
   return db.timelineEvents
     .filter((e) => e.debateId === debateId)
     .sort(
@@ -91,18 +191,49 @@ export function getTimelineEvents(debateId: string): TimelineEvent[] {
     );
 }
 
-export function getDebateReport(debateId: string): DebateReport | null {
-  const db = ensureDb();
+export async function getDebateReport(debateId: string): Promise<DebateReport | null> {
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("debate_reports")
+      .select("*")
+      .eq("debate_id", debateId)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? rowToReport(data) : null;
+  }
+
+  const db = ensureFileDb();
   return db.reports.find((r) => r.debateId === debateId) ?? null;
 }
 
-export function createDebate(
+export async function createDebate(
   topic: string,
   options?: { maxRounds?: number; turnIntervalMs?: number },
-): Debate {
-  const db = ensureDb();
+): Promise<Debate> {
   const now = new Date().toISOString();
+  const sb = getSupabase();
 
+  if (sb) {
+    const { data, error } = await sb
+      .from("debates")
+      .insert({
+        topic: topic.trim(),
+        status: "active",
+        round: 0,
+        max_rounds: options?.maxRounds ?? 20,
+        turn_interval_ms: options?.turnIntervalMs ?? 8000,
+        report_status: "none",
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return rowToDebate(data);
+  }
+
+  const db = ensureFileDb();
   const debate: Debate = {
     id: uuidv4(),
     topic: topic.trim(),
@@ -115,21 +246,43 @@ export function createDebate(
     createdAt: now,
     updatedAt: now,
   };
-
   db.debates.push(debate);
-  saveDb(db);
+  saveFileDb(db);
   return debate;
 }
 
-export function addMessage(
+export async function addMessage(
   debateId: string,
   personaId: DebateMessage["personaId"],
   content: string,
   round: number,
-): DebateMessage {
-  const db = ensureDb();
+): Promise<DebateMessage> {
   const now = new Date().toISOString();
+  const sb = getSupabase();
 
+  if (sb) {
+    const { data, error } = await sb
+      .from("debate_messages")
+      .insert({
+        debate_id: debateId,
+        persona_id: personaId,
+        content,
+        round,
+        created_at: now,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+
+    await sb
+      .from("debates")
+      .update({ round, last_turn_at: now, updated_at: now })
+      .eq("id", debateId);
+
+    return rowToMessage(data);
+  }
+
+  const db = ensureFileDb();
   const message: DebateMessage = {
     id: uuidv4(),
     debateId,
@@ -138,7 +291,6 @@ export function addMessage(
     round,
     createdAt: now,
   };
-
   db.messages.push(message);
 
   const debate = db.debates.find((d) => d.id === debateId);
@@ -147,89 +299,190 @@ export function addMessage(
     debate.lastTurnAt = now;
     debate.updatedAt = now;
   }
-
-  saveDb(db);
+  saveFileDb(db);
   return message;
 }
 
-export function addTimelineEvent(
+export async function addTimelineEvent(
   event: Omit<TimelineEvent, "id" | "createdAt">,
-): TimelineEvent {
-  const db = ensureDb();
+): Promise<TimelineEvent> {
   const now = new Date().toISOString();
+  const sb = getSupabase();
 
+  if (sb) {
+    const { data, error } = await sb
+      .from("timeline_events")
+      .insert({
+        debate_id: event.debateId,
+        type: event.type,
+        title: event.title,
+        summary: event.summary,
+        round: event.round,
+        message_id: event.messageId,
+        created_at: now,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      // unique index on (debate_id, round) — 이미 있으면 무시
+      if (error.code === "23505") {
+        const existing = await getTimelineEvents(event.debateId);
+        const found = existing.find((e) => e.round === event.round);
+        if (found) return found;
+      }
+      throw error;
+    }
+
+    await sb
+      .from("debates")
+      .update({ updated_at: now })
+      .eq("id", event.debateId);
+
+    return rowToTimeline(data);
+  }
+
+  const db = ensureFileDb();
   const timelineEvent: TimelineEvent = {
     ...event,
     id: uuidv4(),
     createdAt: now,
   };
-
   db.timelineEvents.push(timelineEvent);
 
   const debate = db.debates.find((d) => d.id === event.debateId);
-  if (debate) {
-    debate.updatedAt = now;
-  }
+  if (debate) debate.updatedAt = now;
 
-  saveDb(db);
+  saveFileDb(db);
   return timelineEvent;
 }
 
-export function updateDebateStatus(
+export async function updateDebateStatus(
   id: string,
   status: DebateStatus,
-): Debate | null {
-  const db = ensureDb();
+): Promise<Debate | null> {
+  const now = new Date().toISOString();
+  const sb = getSupabase();
+
+  if (sb) {
+    const { data, error } = await sb
+      .from("debates")
+      .update({ status, updated_at: now })
+      .eq("id", id)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data ? rowToDebate(data) : null;
+  }
+
+  const db = ensureFileDb();
   const debate = db.debates.find((d) => d.id === id);
   if (!debate) return null;
-
   debate.status = status;
-  debate.updatedAt = new Date().toISOString();
-  saveDb(db);
+  debate.updatedAt = now;
+  saveFileDb(db);
   return debate;
 }
 
-export function updateReportStatus(
+export async function updateReportStatus(
   id: string,
   reportStatus: ReportStatus,
-): Debate | null {
-  const db = ensureDb();
+): Promise<Debate | null> {
+  const now = new Date().toISOString();
+  const sb = getSupabase();
+
+  if (sb) {
+    const { data, error } = await sb
+      .from("debates")
+      .update({ report_status: reportStatus, updated_at: now })
+      .eq("id", id)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data ? rowToDebate(data) : null;
+  }
+
+  const db = ensureFileDb();
   const debate = db.debates.find((d) => d.id === id);
   if (!debate) return null;
-
   debate.reportStatus = reportStatus;
-  debate.updatedAt = new Date().toISOString();
-  saveDb(db);
+  debate.updatedAt = now;
+  saveFileDb(db);
   return debate;
 }
 
-export function saveDebateReport(report: DebateReport): DebateReport {
-  const db = ensureDb();
-  const index = db.reports.findIndex((r) => r.debateId === report.debateId);
+export async function saveDebateReport(report: DebateReport): Promise<DebateReport> {
+  const now = new Date().toISOString();
+  const sb = getSupabase();
 
-  if (index >= 0) {
-    db.reports[index] = report;
-  } else {
-    db.reports.push(report);
+  if (sb) {
+    const { error } = await sb.from("debate_reports").upsert({
+      debate_id: report.debateId,
+      title: report.title,
+      executive_summary: report.executiveSummary,
+      consensus_points: report.consensusPoints,
+      pro_arguments: report.proArguments,
+      con_arguments: report.conArguments,
+      unresolved_issues: report.unresolvedIssues,
+      final_conclusion: report.finalConclusion,
+      recommendation: report.recommendation,
+      generated_at: report.generatedAt,
+    });
+    if (error) throw error;
+
+    await sb
+      .from("debates")
+      .update({ report_status: "done", updated_at: now })
+      .eq("id", report.debateId);
+
+    return report;
   }
+
+  const db = ensureFileDb();
+  const index = db.reports.findIndex((r) => r.debateId === report.debateId);
+  if (index >= 0) db.reports[index] = report;
+  else db.reports.push(report);
 
   const debate = db.debates.find((d) => d.id === report.debateId);
   if (debate) {
     debate.reportStatus = "done";
-    debate.updatedAt = new Date().toISOString();
+    debate.updatedAt = now;
   }
-
-  saveDb(db);
+  saveFileDb(db);
   return report;
 }
 
-export function getActiveDebates(): Debate[] {
-  const db = ensureDb();
+export async function getActiveDebates(): Promise<Debate[]> {
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("debates")
+      .select("*")
+      .eq("status", "active");
+    if (error) throw error;
+    return (data ?? []).map(rowToDebate);
+  }
+
+  const db = ensureFileDb();
   return db.debates.filter((d) => d.status === "active");
 }
 
-export function hasTimelineForRound(debateId: string, round: number): boolean {
-  const db = ensureDb();
+export async function hasTimelineForRound(
+  debateId: string,
+  round: number,
+): Promise<boolean> {
+  const sb = getSupabase();
+  if (sb) {
+    const { count, error } = await sb
+      .from("timeline_events")
+      .select("*", { count: "exact", head: true })
+      .eq("debate_id", debateId)
+      .eq("round", round);
+    if (error) throw error;
+    return (count ?? 0) > 0;
+  }
+
+  const db = ensureFileDb();
   return db.timelineEvents.some(
     (e) => e.debateId === debateId && e.round === round,
   );
