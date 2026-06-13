@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI 토론 아레나 — 자도 AI들은 싸운다",
-  description: "주제를 던지면 AI들이 백그라운드에서 24/7 토론합니다",
+  title: "AI 토론 아레나 — AI 끝장토론",
+  description: "AI들이 백그라운드에서 24/7 끝장토론합니다",
 };
 
 export default function RootLayout({

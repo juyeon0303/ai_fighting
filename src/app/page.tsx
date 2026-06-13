@@ -15,11 +15,9 @@ export default function Home() {
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />
             24/7 AI 토론 아레나
           </div>
-          <h1 className="mb-4 text-4xl font-black tracking-tight text-white md:text-5xl">
-            주제만 던지면
-            <br />
+          <h1 className="mb-4 text-4xl font-black tracking-tight md:text-5xl">
             <span className="bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
-              AI들이 알아서 싸운다
+              AI 끝장토론
             </span>
           </h1>
           <p className="mx-auto max-w-lg text-white/50">

@@ -12,6 +12,17 @@ create table if not exists debates (
   turn_interval_ms int not null default 8000,
   last_turn_at timestamptz,
   report_status text not null default 'none' check (report_status in ('none', 'generating', 'done')),
+  llm_mode text not null default 'free' check (llm_mode in ('free', 'user_api')),
+  api_layout text check (api_layout is null or api_layout in ('openai_only', 'gemini_only', 'gpt_vs_gemini')),
+  api_provider text,
+  api_model text,
+  openai_model text,
+  gemini_model text,
+  encrypted_api_key text,
+  encrypted_gemini_key text,
+  max_token_budget int not null default 0,
+  tokens_used int not null default 0,
+  end_reason text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

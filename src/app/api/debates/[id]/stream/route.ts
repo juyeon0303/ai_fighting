@@ -4,6 +4,7 @@ import {
   getDebateReport,
   getTimelineEvents,
 } from "@/lib/db";
+import { sanitizeDebateForClient } from "@/lib/debate-llm-config";
 import { debateEvents, startDebateWorker } from "@/lib/debate-engine";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export async function GET(
       };
 
       send("init", {
-        debate,
+        debate: sanitizeDebateForClient(debate),
         messages: existingMessages,
         timeline,
         report,

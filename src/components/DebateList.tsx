@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Debate } from "@/lib/types";
+import { DeleteDebateButton } from "./DeleteDebateButton";
 
 const STATUS_LABEL: Record<Debate["status"], string> = {
   active: "진행 중",
@@ -27,6 +28,10 @@ export function DebateList() {
       .finally(() => setLoading(false));
   }, []);
 
+  function handleDeleted(id: string) {
+    setDebates((prev) => prev.filter((d) => d.id !== id));
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -46,12 +51,14 @@ export function DebateList() {
   return (
     <div className="space-y-3">
       {debates.map((debate) => (
-        <Link
+        <div
           key={debate.id}
-          href={`/debate/${debate.id}`}
-          className="group flex items-center justify-between rounded-2xl border border-white/8 bg-white/3 px-5 py-4 transition hover:border-violet-500/30 hover:bg-white/6"
+          className="group flex items-center gap-2 rounded-2xl border border-white/8 bg-white/3 px-5 py-4 transition hover:border-violet-500/30 hover:bg-white/6"
         >
-          <div className="min-w-0 flex-1">
+          <Link
+            href={`/debate/${debate.id}`}
+            className="min-w-0 flex-1"
+          >
             <p className="truncate font-medium text-white group-hover:text-violet-200">
               {debate.topic}
             </p>
@@ -59,13 +66,18 @@ export function DebateList() {
               라운드 {debate.round} ·{" "}
               {new Date(debate.updatedAt).toLocaleString("ko-KR")}
             </p>
-          </div>
+          </Link>
           <span
-            className={`ml-4 shrink-0 rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLOR[debate.status]}`}
+            className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLOR[debate.status]}`}
           >
             {STATUS_LABEL[debate.status]}
           </span>
-        </Link>
+          <DeleteDebateButton
+            debateId={debate.id}
+            topic={debate.topic}
+            onDeleted={() => handleDeleted(debate.id)}
+          />
+        </div>
       ))}
     </div>
   );

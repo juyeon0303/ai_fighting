@@ -1,38 +1,138 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ApiKeySetupPanel, settingsFromPanel } from "./ApiKeySetupPanel";
+import {
+  DEFAULT_MAX_TOKEN_BUDGET,
+  loadApiSettings,
+  saveApiSettings,
+} from "@/lib/client-api-settings";
+import { validateUserApiInput } from "@/lib/debate-llm-config";
+import type { ApiLayout } from "@/lib/types";
 
 export function TopicForm() {
   const [topic, setTopic] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"free" | "user_api">("free");
+  const [layout, setLayout] = useState<ApiLayout>("openai_only");
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
+  const [openaiModel, setOpenaiModel] = useState("gpt-4o-mini");
+  const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash");
+  const [maxTokenBudget, setMaxTokenBudget] = useState(DEFAULT_MAX_TOKEN_BUDGET);
+  const [rememberKey, setRememberKey] = useState(true);
   const router = useRouter();
+
+  useEffect(() => {
+    const saved = loadApiSettings();
+    if (!saved) return;
+    if (saved.enabled) setMode("user_api");
+    setLayout(saved.layout);
+    setOpenaiKey(saved.openaiKey);
+    setGeminiKey(saved.geminiKey);
+    setOpenaiModel(saved.openaiModel);
+    setGeminiModel(saved.geminiModel);
+    setMaxTokenBudget(saved.maxTokenBudget);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!topic.trim() || loading) return;
 
+    if (mode === "user_api") {
+      const err = validateUserApiInput({
+        layout,
+        openaiKey,
+        geminiKey,
+        openaiModel,
+        geminiModel,
+        maxTokenBudget,
+      });
+      if (err) {
+        alert(err);
+        return;
+      }
+    }
+
+    const toSave = settingsFromPanel(
+      mode,
+      layout,
+      openaiKey,
+      geminiKey,
+      openaiModel,
+      geminiModel,
+      maxTokenBudget,
+      rememberKey,
+    );
+    if (toSave) saveApiSettings(toSave);
+
     setLoading(true);
     try {
+      const body: Record<string, unknown> = { topic };
+      if (mode === "user_api") {
+        body.userApi = {
+          layout,
+          openaiKey: openaiKey.trim() || undefined,
+          geminiKey: geminiKey.trim() || undefined,
+          openaiModel,
+          geminiModel,
+          maxTokenBudget,
+        };
+      }
+
       const res = await fetch("/api/debates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic }),
+        body: JSON.stringify(body),
       });
 
-      if (!res.ok) throw new Error("생성 실패");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? "생성 실패");
+      }
 
       const debate = await res.json();
       router.push(`/debate/${debate.id}`);
-    } catch {
-      alert("토론 생성에 실패했습니다.");
+    } catch (err) {
+      alert(
+        err instanceof Error ? err.message : "토론 생성에 실패했습니다.",
+      );
     } finally {
       setLoading(false);
     }
   }
 
+  const modeHint =
+    mode === "user_api"
+      ? layout === "gpt_vs_gemini"
+        ? "GPT vs Gemini 교차 토론 · 예산 내에서만 실행"
+        : layout === "gemini_only"
+          ? "Gemini API로 토론 · 예산 내에서만 실행"
+          : "GPT API로 토론 · 예산 내에서만 실행"
+      : "무료 엔진으로 토론 · API 키 불필요";
+
   return (
-    <form onSubmit={handleSubmit} className="w-full">
+    <form onSubmit={handleSubmit} className="w-full space-y-4">
+      <ApiKeySetupPanel
+        mode={mode}
+        onModeChange={setMode}
+        layout={layout}
+        onLayoutChange={setLayout}
+        openaiKey={openaiKey}
+        onOpenaiKeyChange={setOpenaiKey}
+        geminiKey={geminiKey}
+        onGeminiKeyChange={setGeminiKey}
+        openaiModel={openaiModel}
+        onOpenaiModelChange={setOpenaiModel}
+        geminiModel={geminiModel}
+        onGeminiModelChange={setGeminiModel}
+        maxTokenBudget={maxTokenBudget}
+        onMaxTokenBudgetChange={setMaxTokenBudget}
+        rememberKey={rememberKey}
+        onRememberKeyChange={setRememberKey}
+      />
+
       <div className="relative">
         <input
           type="text"
@@ -50,9 +150,8 @@ export function TopicForm() {
           {loading ? "생성 중..." : "토론 시작 →"}
         </button>
       </div>
-      <p className="mt-3 text-center text-sm text-white/40">
-        시작하면 AI들이 백그라운드에서 계속 토론합니다. 자도 됩니다.
-      </p>
+
+      <p className="text-center text-sm text-white/40">{modeHint}</p>
     </form>
   );
 }

@@ -1,6 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { v4 as uuidv4 } from "uuid";
+import { encryptApiKey } from "./api-key-crypto";
+import type { UserApiInput } from "./debate-llm-config";
+import { validateUserApiInput } from "./debate-llm-config";
 import { getSupabase, isSupabaseEnabled } from "./supabase";
 import type {
   Debate,
@@ -33,6 +36,17 @@ function rowToDebate(row: Record<string, unknown>): Debate {
     turnIntervalMs: row.turn_interval_ms as number,
     lastTurnAt: (row.last_turn_at as string) ?? null,
     reportStatus: (row.report_status as ReportStatus) ?? "none",
+    llmMode: (row.llm_mode as Debate["llmMode"]) ?? "free",
+    apiLayout: (row.api_layout as Debate["apiLayout"]) ?? null,
+    apiProvider: (row.api_provider as Debate["apiProvider"]) ?? null,
+    apiModel: (row.api_model as string) ?? null,
+    openaiModel: (row.openai_model as string) ?? null,
+    geminiModel: (row.gemini_model as string) ?? null,
+    maxTokenBudget: (row.max_token_budget as number) ?? 0,
+    tokensUsed: (row.tokens_used as number) ?? 0,
+    endReason: (row.end_reason as string) ?? null,
+    encryptedApiKey: (row.encrypted_api_key as string) ?? null,
+    encryptedGeminiKey: (row.encrypted_gemini_key as string) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -98,6 +112,15 @@ function ensureFileDb(): FileDatabase {
     debates: (raw.debates ?? []).map((d) => ({
       ...d,
       reportStatus: d.reportStatus ?? "none",
+      llmMode: d.llmMode ?? "free",
+      apiLayout: d.apiLayout ?? null,
+      apiProvider: d.apiProvider ?? null,
+      apiModel: d.apiModel ?? null,
+      openaiModel: d.openaiModel ?? null,
+      geminiModel: d.geminiModel ?? null,
+      maxTokenBudget: d.maxTokenBudget ?? 0,
+      tokensUsed: d.tokensUsed ?? 0,
+      endReason: d.endReason ?? null,
     })),
     messages: raw.messages ?? [],
     timelineEvents: raw.timelineEvents ?? [],
@@ -209,10 +232,58 @@ export async function getDebateReport(debateId: string): Promise<DebateReport | 
 
 export async function createDebate(
   topic: string,
-  options?: { maxRounds?: number; turnIntervalMs?: number },
+  options?: {
+    maxRounds?: number;
+    turnIntervalMs?: number;
+    userApi?: UserApiInput;
+  },
 ): Promise<Debate> {
   const now = new Date().toISOString();
   const sb = getSupabase();
+  const userApi = options?.userApi;
+  const hasUserApi = !!userApi && !validateUserApiInput(userApi);
+  const maxTokenBudget = hasUserApi
+    ? Math.max(1_000, userApi!.maxTokenBudget ?? 30_000)
+    : 0;
+
+  const layout = userApi?.layout ?? "openai_only";
+  const openaiModel = userApi?.openaiModel ?? "gpt-4o-mini";
+  const geminiModel = userApi?.geminiModel ?? "gemini-2.0-flash";
+
+  const llmFields = hasUserApi
+    ? {
+        llm_mode: "user_api" as const,
+        api_layout: layout,
+        api_provider:
+          layout === "gemini_only"
+            ? ("gemini" as const)
+            : layout === "openai_only"
+              ? ("openai" as const)
+              : null,
+        api_model: openaiModel,
+        openai_model: openaiModel,
+        gemini_model: geminiModel,
+        encrypted_api_key: userApi!.openaiKey?.trim()
+          ? encryptApiKey(userApi!.openaiKey.trim())
+          : null,
+        encrypted_gemini_key: userApi!.geminiKey?.trim()
+          ? encryptApiKey(userApi!.geminiKey.trim())
+          : null,
+        max_token_budget: maxTokenBudget,
+        tokens_used: 0,
+      }
+    : {
+        llm_mode: "free" as const,
+        api_layout: null,
+        api_provider: null,
+        api_model: null,
+        openai_model: null,
+        gemini_model: null,
+        encrypted_api_key: null,
+        encrypted_gemini_key: null,
+        max_token_budget: 0,
+        tokens_used: 0,
+      };
 
   if (sb) {
     const { data, error } = await sb
@@ -224,6 +295,8 @@ export async function createDebate(
         max_rounds: options?.maxRounds ?? 20,
         turn_interval_ms: options?.turnIntervalMs ?? 8000,
         report_status: "none",
+        end_reason: null,
+        ...llmFields,
         created_at: now,
         updated_at: now,
       })
@@ -243,6 +316,27 @@ export async function createDebate(
     turnIntervalMs: options?.turnIntervalMs ?? 8000,
     lastTurnAt: null,
     reportStatus: "none",
+    llmMode: hasUserApi ? "user_api" : "free",
+    apiLayout: hasUserApi ? layout : null,
+    apiProvider: hasUserApi
+      ? layout === "gemini_only"
+        ? "gemini"
+        : layout === "openai_only"
+          ? "openai"
+          : null
+      : null,
+    apiModel: hasUserApi ? openaiModel : null,
+    openaiModel: hasUserApi ? openaiModel : null,
+    geminiModel: hasUserApi ? geminiModel : null,
+    encryptedApiKey: userApi?.openaiKey?.trim()
+      ? encryptApiKey(userApi.openaiKey.trim())
+      : null,
+    encryptedGeminiKey: userApi?.geminiKey?.trim()
+      ? encryptApiKey(userApi.geminiKey.trim())
+      : null,
+    maxTokenBudget,
+    tokensUsed: 0,
+    endReason: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -355,6 +449,68 @@ export async function addTimelineEvent(
 
   saveFileDb(db);
   return timelineEvent;
+}
+
+export async function addTokenUsage(
+  id: string,
+  tokens: number,
+): Promise<Debate | null> {
+  if (tokens <= 0) return getDebate(id);
+
+  const now = new Date().toISOString();
+  const sb = getSupabase();
+
+  if (sb) {
+    const current = await getDebate(id);
+    if (!current) return null;
+
+    const { data, error } = await sb
+      .from("debates")
+      .update({
+        tokens_used: current.tokensUsed + tokens,
+        updated_at: now,
+      })
+      .eq("id", id)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data ? rowToDebate(data) : null;
+  }
+
+  const db = ensureFileDb();
+  const debate = db.debates.find((d) => d.id === id);
+  if (!debate) return null;
+  debate.tokensUsed += tokens;
+  debate.updatedAt = now;
+  saveFileDb(db);
+  return debate;
+}
+
+export async function setDebateEndReason(
+  id: string,
+  endReason: string,
+): Promise<Debate | null> {
+  const now = new Date().toISOString();
+  const sb = getSupabase();
+
+  if (sb) {
+    const { data, error } = await sb
+      .from("debates")
+      .update({ end_reason: endReason, updated_at: now })
+      .eq("id", id)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data ? rowToDebate(data) : null;
+  }
+
+  const db = ensureFileDb();
+  const debate = db.debates.find((d) => d.id === id);
+  if (!debate) return null;
+  debate.endReason = endReason;
+  debate.updatedAt = now;
+  saveFileDb(db);
+  return debate;
 }
 
 export async function updateDebateStatus(
@@ -486,4 +642,30 @@ export async function hasTimelineForRound(
   return db.timelineEvents.some(
     (e) => e.debateId === debateId && e.round === round,
   );
+}
+
+export async function deleteDebate(id: string): Promise<boolean> {
+  const sb = getSupabase();
+
+  if (sb) {
+    const { data, error } = await sb
+      .from("debates")
+      .delete()
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
+    if (error) throw error;
+    return !!data;
+  }
+
+  const db = ensureFileDb();
+  const exists = db.debates.some((d) => d.id === id);
+  if (!exists) return false;
+
+  db.debates = db.debates.filter((d) => d.id !== id);
+  db.messages = db.messages.filter((m) => m.debateId !== id);
+  db.timelineEvents = db.timelineEvents.filter((e) => e.debateId !== id);
+  db.reports = db.reports.filter((r) => r.debateId !== id);
+  saveFileDb(db);
+  return true;
 }

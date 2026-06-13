@@ -6,7 +6,8 @@
     "dev": "next dev -p 4000",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p ${PORT:-4000}",
-    "lint": "eslint"
+    "lint": "eslint",
+    "simulate": "npx tsx scripts/simulate-debates.ts"
   },
   "engines": {
     "node": ">=20"
@@ -28,6 +29,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

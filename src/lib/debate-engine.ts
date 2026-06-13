@@ -3,6 +3,7 @@ import { analyzeRoundForTimeline, generateFinalReport } from "./analysis";
 import {
   addMessage,
   addTimelineEvent,
+  addTokenUsage,
   getActiveDebates,
   getDebate,
   getDebateMessages,
@@ -10,9 +11,14 @@ import {
   getTimelineEvents,
   hasTimelineForRound,
   saveDebateReport,
+  setDebateEndReason,
   updateDebateStatus,
   updateReportStatus,
 } from "./db";
+import {
+  isTokenBudgetExceeded,
+  resolvePersonaLlmRuntime,
+} from "./debate-llm-config";
 import { generateDebateTurn } from "./llm";
 import { getNextPersona } from "./personas";
 import type { DebateMessage } from "./types";
@@ -89,7 +95,10 @@ export async function finalizeDebate(debateId: string): Promise<void> {
   }
 }
 
-async function endDebate(debateId: string): Promise<void> {
+async function endDebate(debateId: string, endReason?: string): Promise<void> {
+  if (endReason) {
+    await setDebateEndReason(debateId, endReason);
+  }
   await updateDebateStatus(debateId, "ended");
   debateEvents.emit("debate-ended", { debateId });
   await finalizeDebate(debateId);
@@ -103,23 +112,61 @@ async function processDebateTurn(debateId: string): Promise<DebateMessage | null
     const debate = await getDebate(debateId);
     if (!debate || debate.status !== "active") return null;
 
+    if (isTokenBudgetExceeded(debate)) {
+      await endDebate(debateId, "token_budget");
+      return null;
+    }
+
     const messages = await getDebateMessages(debateId);
     const round = Math.floor(messages.length / 4) + 1;
 
     if (round > debate.maxRounds) {
-      await endDebate(debateId);
+      await endDebate(debateId, "max_rounds");
       return null;
     }
 
     const personaId = getNextPersona(round, messages.length);
-    const content = await generateDebateTurn(
+    const runtime = resolvePersonaLlmRuntime(debate, personaId);
+    const turn = await generateDebateTurn(
       debate.topic,
       personaId,
       messages,
       round,
+      debateId,
+      runtime,
     );
 
-    const message = await addMessage(debateId, personaId, content, round);
+    if (turn.stopReason === "auth") {
+      await endDebate(debateId, "invalid_api_key");
+      return null;
+    }
+
+    if (turn.stopReason === "quota") {
+      await endDebate(debateId, "api_quota");
+      return null;
+    }
+
+    if (turn.tokensUsed > 0) {
+      const updated = await addTokenUsage(debateId, turn.tokensUsed);
+      if (updated && isTokenBudgetExceeded(updated)) {
+        const message = await addMessage(
+          debateId,
+          personaId,
+          turn.content,
+          round,
+        );
+        debateEvents.emit("message", { debateId, message });
+        await endDebate(debateId, "token_budget");
+        return message;
+      }
+    }
+
+    const message = await addMessage(
+      debateId,
+      personaId,
+      turn.content,
+      round,
+    );
     debateEvents.emit("message", { debateId, message });
 
     const updatedMessages = await getDebateMessages(debateId);

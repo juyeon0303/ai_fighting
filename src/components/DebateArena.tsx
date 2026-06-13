@@ -2,16 +2,23 @@
 
 import { useEffect, useRef, useState } from "react";
 import type {
+  ApiLayout,
   DebateMessage,
   DebateReport,
   PersonaId,
   TimelineEvent,
 } from "@/lib/types";
 import { PERSONAS } from "@/lib/personas";
-import { parseTopic, getPersonaStance } from "@/lib/topic-context";
+import { parseTopic, getPersonaStance, getModeLabel } from "@/lib/topic-context";
+import {
+  layoutLabel,
+  personaProvider,
+  providerLabel,
+} from "@/lib/debate-llm-config";
 import { ArenaEffects } from "./ArenaEffects";
 import { DebateTimeline } from "./DebateTimeline";
 import { DebateReportPanel } from "./DebateReportPanel";
+import { DeleteDebateButton } from "./DeleteDebateButton";
 import { MessageBubble, TypingIndicator } from "./MessageBubble";
 
 interface DebateArenaProps {
@@ -28,6 +35,11 @@ export function DebateArena({ debateId }: DebateArenaProps) {
   const [reportStatus, setReportStatus] = useState("none");
   const [status, setStatus] = useState("active");
   const [topic, setTopic] = useState("");
+  const [llmMode, setLlmMode] = useState<"free" | "user_api">("free");
+  const [apiLayout, setApiLayout] = useState<ApiLayout | null>(null);
+  const [tokensUsed, setTokensUsed] = useState(0);
+  const [maxTokenBudget, setMaxTokenBudget] = useState(0);
+  const [endReason, setEndReason] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [flashKey, setFlashKey] = useState(0);
   const [isClash, setIsClash] = useState(false);
@@ -52,6 +64,11 @@ export function DebateArena({ debateId }: DebateArenaProps) {
       setReportStatus(data.debate.reportStatus ?? "none");
       setStatus(data.debate.status);
       setTopic(data.debate.topic);
+      setLlmMode(data.debate.llmMode ?? "free");
+      setApiLayout(data.debate.apiLayout ?? null);
+      setTokensUsed(data.debate.tokensUsed ?? 0);
+      setMaxTokenBudget(data.debate.maxTokenBudget ?? 0);
+      setEndReason(data.debate.endReason ?? null);
       setConnected(true);
       data.messages.forEach((m: DebateMessage) =>
         knownMessageIds.current.add(m.id),
@@ -158,7 +175,9 @@ export function DebateArena({ debateId }: DebateArenaProps) {
             <div>
               <h1 className="text-lg font-bold text-white">{topic}</h1>
             {topicCtx && (
-              <p className="mt-1 text-xs text-white/35">{topicCtx.brief}</p>
+              <p className="mt-1 text-xs text-white/35">
+                [{getModeLabel(topicCtx.mode)}] {topicCtx.brief}
+              </p>
             )}
               <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-white/40">
                 <span
@@ -181,6 +200,36 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                   <>
                     <span>·</span>
                     <span>합의 {timeline.filter((e) => e.type === "consensus").length}건</span>
+                  </>
+                )}
+                {llmMode === "user_api" && maxTokenBudget > 0 && (
+                  <>
+                    <span>·</span>
+                    <span>
+                      {layoutLabel(apiLayout)} · 토큰{" "}
+                      {tokensUsed.toLocaleString()} /{" "}
+                      {maxTokenBudget.toLocaleString()}
+                    </span>
+                  </>
+                )}
+                {llmMode === "free" && (
+                  <>
+                    <span>·</span>
+                    <span>무료 엔진</span>
+                  </>
+                )}
+                {endReason && (
+                  <>
+                    <span>·</span>
+                    <span>
+                      {endReason === "token_budget"
+                        ? "토큰 예산 종료"
+                        : endReason === "api_quota"
+                          ? "API 한도 종료"
+                          : endReason === "invalid_api_key"
+                            ? "API 키 오류"
+                            : endReason}
+                    </span>
                   </>
                 )}
               </div>
@@ -218,6 +267,11 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                   종료
                 </button>
               )}
+              <DeleteDebateButton
+                debateId={debateId}
+                topic={topic || "이 토론"}
+                redirectHome
+              />
             </div>
           </div>
 
@@ -229,6 +283,10 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                 topicCtx && (id === "pro" || id === "con" || id === "moderator" || id === "neutral")
                   ? getPersonaStance(id, topicCtx).split("—")[0].trim()
                   : p.name;
+              const providerBadge =
+                llmMode === "user_api" && apiLayout
+                  ? providerLabel(personaProvider(apiLayout, id))
+                  : null;
               return (
                 <div
                   key={id}
@@ -236,6 +294,11 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                   style={isActive ? { color: p.color } : undefined}
                 >
                   {p.emoji} {label}
+                  {providerBadge && (
+                    <span className="rounded bg-white/10 px-1 text-[9px] text-white/50">
+                      {providerBadge}
+                    </span>
+                  )}
                 </div>
               );
             })}
