@@ -40,6 +40,9 @@ export function DebateArena({ debateId }: DebateArenaProps) {
   const [tokensUsed, setTokensUsed] = useState(0);
   const [maxTokenBudget, setMaxTokenBudget] = useState(0);
   const [endReason, setEndReason] = useState<string | null>(null);
+  const [apiConnectionIssue, setApiConnectionIssue] = useState<
+    "key_decrypt_failed" | "key_missing" | null
+  >(null);
   const [connected, setConnected] = useState(false);
   const [flashKey, setFlashKey] = useState(0);
   const [isClash, setIsClash] = useState(false);
@@ -69,6 +72,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
       setTokensUsed(data.debate.tokensUsed ?? 0);
       setMaxTokenBudget(data.debate.maxTokenBudget ?? 0);
       setEndReason(data.debate.endReason ?? null);
+      setApiConnectionIssue(data.debate.apiConnectionIssue ?? null);
       setConnected(true);
       data.messages.forEach((m: DebateMessage) =>
         knownMessageIds.current.add(m.id),
@@ -138,6 +142,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
         setTokensUsed(data.debate.tokensUsed ?? 0);
         setMaxTokenBudget(data.debate.maxTokenBudget ?? 0);
         setEndReason(data.debate.endReason ?? null);
+        setApiConnectionIssue(data.debate.apiConnectionIssue ?? null);
         setStatus(data.debate.status);
       }
     });
@@ -250,7 +255,12 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                       {tokensUsed === 0 && messages.length > 0 && status === "active" && (
                         <span className="text-amber-400/90">
                           {" "}
-                          · Gemini/GPT 연결 안 됨 → 무료 엔진
+                          ·{" "}
+                          {apiConnectionIssue === "key_decrypt_failed"
+                            ? "API 키 복호화 실패 — 토론 삭제 후 새로 만들기"
+                            : apiConnectionIssue === "key_missing"
+                              ? "API 키 없음 — 새 토론에서 키 다시 입력"
+                              : "Gemini/GPT 연결 안 됨 → 무료 엔진"}
                         </span>
                       )}
                     </span>

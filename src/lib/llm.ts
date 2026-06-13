@@ -96,6 +96,7 @@ async function generateWithProvider(
   runtime: PersonaLlmRuntime,
 ): Promise<TurnResult> {
   let totalTokens = 0;
+  let lastStopReason: LlmStopReason = null;
   const source = runtime.provider === "gemini" ? "gemini" : "openai";
 
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -124,6 +125,7 @@ async function generateWithProvider(
     totalTokens += result.tokensUsed;
 
     if (result.stopReason) {
+      lastStopReason = result.stopReason;
       break;
     }
 
@@ -152,7 +154,7 @@ async function generateWithProvider(
     content: fallback,
     tokensUsed: totalTokens,
     source: "engine",
-    stopReason: null,
+    stopReason: lastStopReason,
   };
 }
 

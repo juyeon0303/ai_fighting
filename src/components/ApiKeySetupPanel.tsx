@@ -288,8 +288,8 @@ export function ApiKeySetupPanel({
                   <p className="mt-2 text-white/45">
                     2026년부터 신규 키는 <code className="text-white/60">AQ.</code>로
                     시작하는 경우가 많음 (AIza도 계속 사용 가능).
-                    토큰이 0이면 API 연결 실패 — 키 재발급 또는 모델을
-                    flash-lite로 바꿔 보세요.
+                    토큰이 0이면 API 연결 실패 — 키 재발급, 모델을 flash-lite로
+                    변경, 또는 이 토론 삭제 후 새로 시작해 보세요.
                   </p>
                   <a
                     href={GEMINI_KEYS_URL}

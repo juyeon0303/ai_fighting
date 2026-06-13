@@ -2,6 +2,7 @@ import type { LlmStopReason } from "./llm";
 import {
   DEFAULT_GEMINI_MODEL,
   GEMINI_MODEL_FALLBACKS,
+  normalizeGeminiModel,
 } from "./gemini-models";
 
 export { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_OPTIONS } from "./gemini-models";
@@ -9,8 +10,7 @@ export { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_OPTIONS } from "./gemini-models";
 const GEMINI_BASE =
   "https://generativelanguage.googleapis.com/v1beta/models";
 
-const FETCH_TIMEOUT_MS = 12_000;
-const MAX_HTTP_ATTEMPTS = 4;
+const FETCH_TIMEOUT_MS = 20_000;
 
 export function isLikelyGeminiKey(key: string): boolean {
   const k = key.trim();
@@ -25,13 +25,27 @@ function mapGeminiError(status: number): LlmStopReason {
 }
 
 function modelCandidates(preferred: string): string[] {
-  return [...new Set([preferred, ...GEMINI_MODEL_FALLBACKS])].slice(0, 2);
+  return [
+    ...new Set([
+      normalizeGeminiModel(preferred),
+      ...GEMINI_MODEL_FALLBACKS,
+    ]),
+  ];
 }
 
 function authModes(apiKey: string): Array<"header" | "query" | "bearer"> {
   return apiKey.trim().startsWith("AQ.")
     ? ["bearer", "header", "query"]
     : ["header", "query"];
+}
+
+function buildGenerationConfig(model: string): Record<string, unknown> {
+  const base = { maxOutputTokens: 300 };
+  // Gemini 3.x는 temperature 미권장 — 400 오류 방지
+  if (!model.startsWith("gemini-3")) {
+    return { ...base, temperature: 0.9 };
+  }
+  return base;
 }
 
 async function fetchWithTimeout(
@@ -76,7 +90,7 @@ async function callGeminiOnce(
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => "");
-    return { ok: false, status: res.status, errorText: errorText.slice(0, 300) };
+    return { ok: false, status: res.status, errorText: errorText.slice(0, 500) };
   }
 
   const data = await res.json();
@@ -93,36 +107,34 @@ export async function requestGeminiTurn(
   tokensUsed: number;
   stopReason: LlmStopReason;
 }> {
-  const body = {
-    systemInstruction: { parts: [{ text: system }] },
-    contents: [{ role: "user", parts: [{ text: user }] }],
-    generationConfig: {
-      maxOutputTokens: 300,
-      temperature: 0.9,
-    },
-  };
-
-  let attempts = 0;
   let lastStatus = 0;
   let lastError = "";
 
   for (const candidateModel of modelCandidates(model)) {
-    for (const auth of authModes(apiKey)) {
-      if (attempts >= MAX_HTTP_ATTEMPTS) break;
-      attempts++;
+    const body = {
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      generationConfig: buildGenerationConfig(candidateModel),
+    };
 
+    for (const auth of authModes(apiKey)) {
       try {
-        const result = await callGeminiOnce(apiKey, candidateModel, body, auth);
+        const result = await callGeminiOnce(
+          apiKey,
+          candidateModel,
+          body,
+          auth,
+        );
 
         if (!result.ok) {
           lastStatus = result.status;
           lastError = result.errorText ?? "";
           const stop = mapGeminiError(result.status);
+          console.warn(
+            `[gemini] ${candidateModel} (${auth}) → ${result.status}`,
+            lastError,
+          );
           if (stop) {
-            console.warn(
-              `[gemini] ${candidateModel} ${auth} → ${result.status}`,
-              lastError,
-            );
             return { content: null, tokensUsed: 0, stopReason: stop };
           }
           continue;
@@ -150,14 +162,17 @@ export async function requestGeminiTurn(
         if (text) {
           return { content: text, tokensUsed, stopReason: null };
         }
+
+        lastError = `empty response (${candidateModel})`;
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
-        console.warn(`[gemini] attempt ${attempts} failed:`, lastError);
+        console.warn(`[gemini] ${candidateModel} (${auth}) failed:`, lastError);
       }
     }
   }
 
   if (lastStatus) {
+    console.warn("[gemini] all attempts failed", { lastStatus, lastError });
     return {
       content: null,
       tokensUsed: 0,
@@ -165,5 +180,6 @@ export async function requestGeminiTurn(
     };
   }
 
+  console.warn("[gemini] no usable response", lastError);
   return { content: null, tokensUsed: 0, stopReason: null };
 }

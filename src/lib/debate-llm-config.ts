@@ -1,7 +1,12 @@
 import type { ApiLayout, Debate, PersonaId } from "./types";
 import { decryptApiKey } from "./api-key-crypto";
-import { DEFAULT_GEMINI_MODEL } from "./gemini-models";
-import { DEFAULT_OPENAI_MODEL } from "./openai-models";
+import { DEFAULT_GEMINI_MODEL, normalizeGeminiModel } from "./gemini-models";
+import { DEFAULT_OPENAI_MODEL, normalizeOpenaiModel } from "./openai-models";
+
+export type ApiConnectionIssue =
+  | "key_decrypt_failed"
+  | "key_missing"
+  | null;
 
 export type LlmMode = "free" | "user_api";
 export type ApiProvider = "openai" | "gemini";
@@ -40,9 +45,11 @@ export function personaModel(
   provider: ApiProvider,
 ): string {
   if (provider === "gemini") {
-    return debate.geminiModel ?? DEFAULT_GEMINI_MODEL;
+    return normalizeGeminiModel(debate.geminiModel ?? DEFAULT_GEMINI_MODEL);
   }
-  return debate.openaiModel ?? debate.apiModel ?? DEFAULT_OPENAI_MODEL;
+  return normalizeOpenaiModel(
+    debate.openaiModel ?? debate.apiModel ?? DEFAULT_OPENAI_MODEL,
+  );
 }
 
 export function providerLabel(provider: ApiProvider): string {
@@ -69,6 +76,27 @@ export function resolveApiLayout(debate: Debate): ApiLayout | null {
     return "openai_only";
   }
   return "openai_only";
+}
+
+export function resolveUserApiConnectionIssue(debate: Debate): ApiConnectionIssue {
+  if (debate.llmMode !== "user_api") return null;
+
+  const layout = resolveApiLayout(debate);
+  if (!layout) return "key_missing";
+
+  const needsOpenai = layout !== "gemini_only";
+  const needsGemini = layout !== "openai_only";
+
+  if (needsOpenai) {
+    if (!debate.encryptedApiKey) return "key_missing";
+    if (!decryptApiKey(debate.encryptedApiKey)) return "key_decrypt_failed";
+  }
+  if (needsGemini) {
+    if (!debate.encryptedGeminiKey) return "key_missing";
+    if (!decryptApiKey(debate.encryptedGeminiKey)) return "key_decrypt_failed";
+  }
+
+  return null;
 }
 
 export function resolvePersonaLlmRuntime(
@@ -139,13 +167,18 @@ export function isTokenBudgetExceeded(debate: Debate): boolean {
   return debate.tokensUsed >= debate.maxTokenBudget;
 }
 
-export function sanitizeDebateForClient(debate: Debate): Debate {
+export function sanitizeDebateForClient(debate: Debate): Debate & {
+  apiConnectionIssue: ApiConnectionIssue;
+} {
   const {
     encryptedApiKey: _a,
     encryptedGeminiKey: _g,
     ...safe
   } = debate;
-  return safe;
+  return {
+    ...safe,
+    apiConnectionIssue: resolveUserApiConnectionIssue(debate),
+  };
 }
 
 export function validateUserApiInput(input: UserApiInput): string | null {
