@@ -93,8 +93,8 @@ export function DebateReportPanel({
             </div>
 
             <Section title="중간 합의 포인트" items={report.consensusPoints} color="#fbbf24" />
-            <Section title="찬성 핵심 논거" items={report.proArguments} color="#22c55e" />
-            <Section title="반대 핵심 논거" items={report.conArguments} color="#ef4444" />
+            <Section title="아틀라스 관점 (큰 그림)" items={report.proArguments} color="#f59e0b" />
+            <Section title="사이퍼 관점 (논리)" items={report.conArguments} color="#8b5cf6" />
             <Section title="미해결 쟁점" items={report.unresolvedIssues} color="#94a3b8" />
 
             <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/8 p-4">

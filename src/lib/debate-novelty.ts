@@ -68,7 +68,7 @@ export function pickNovelLens(
 ): string {
   const pool = NOVEL_LENSES[domain];
   const offset =
-    personaId === "pro" ? 0 : personaId === "con" ? 2 : personaId === "neutral" ? 4 : 1;
+    personaId === "atlas" ? 0 : personaId === "cipher" ? 2 : 4;
   const idx = (round - 1 + offset) % pool.length;
   return pool[idx] ?? pool[0];
 }

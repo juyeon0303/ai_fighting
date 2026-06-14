@@ -4,7 +4,9 @@ export type LlmMode = "free" | "user_api";
 export type ApiProvider = "openai" | "gemini";
 export type ApiLayout = "openai_only" | "gemini_only" | "gpt_vs_gemini";
 
-export type PersonaId = "pro" | "con" | "neutral" | "moderator";
+export type PersonaId = "atlas" | "cipher" | "ember";
+
+export type MessageLlmSource = "openai" | "gemini" | "engine";
 
 export type TimelineEventType = "consensus" | "turning_point" | "conflict";
 
@@ -23,6 +25,8 @@ export interface DebateMessage {
   content: string;
   round: number;
   createdAt: string;
+  /** 어떤 모델이 생성했는지 (없으면 예전 메시지) */
+  llmSource?: MessageLlmSource | null;
 }
 
 export interface TimelineEvent {

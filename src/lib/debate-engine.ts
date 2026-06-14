@@ -21,7 +21,12 @@ import {
   resolvePersonaLlmRuntime,
 } from "./debate-llm-config";
 import { generateDebateTurn, generateEngineTurn } from "./llm";
-import { getNextPersona, TURNS_PER_ROUND } from "./personas";
+import {
+  effectiveTurnIntervalMs,
+  getNextPersona,
+  TURNS_PER_ROUND,
+  WORKER_TICK_MS,
+} from "./personas";
 import type { DebateMessage } from "./types";
 
 export const debateEvents = new EventEmitter();
@@ -189,6 +194,7 @@ async function processDebateTurnInner(
           personaId,
           turn.content,
           round,
+          turn.source,
         );
         debateEvents.emit("message", { debateId, message });
         const freshDebate = await getDebate(debateId);
@@ -208,6 +214,7 @@ async function processDebateTurnInner(
       personaId,
       turn.content,
       round,
+      turn.source,
     );
     debateEvents.emit("message", { debateId, message });
 
@@ -260,7 +267,7 @@ async function tick(): Promise<void> {
     const now = Date.now();
     const lastAt = debate.lastTurnAt ?? messages[messages.length - 1].createdAt;
     const elapsed = now - new Date(lastAt).getTime();
-    if (elapsed < debate.turnIntervalMs) continue;
+    if (elapsed < effectiveTurnIntervalMs(debate.turnIntervalMs)) continue;
 
     await processDebateTurn(debate.id);
   }
@@ -272,7 +279,7 @@ export function startDebateWorker(): void {
 
   workerTimer = setInterval(() => {
     tick().catch(console.error);
-  }, 1000);
+  }, WORKER_TICK_MS);
 
   tick().catch(console.error);
 }

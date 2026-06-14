@@ -10,7 +10,7 @@ export interface WikiContext {
 }
 
 const WIKI_UA = "AI-Debate-Arena/1.0 (educational; no-api-cost debate)";
-const FETCH_TIMEOUT_MS = 4000;
+const FETCH_TIMEOUT_MS = 2500;
 
 const cache = new Map<string, WikiContext | null>();
 

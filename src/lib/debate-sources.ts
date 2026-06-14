@@ -77,7 +77,18 @@ function buildContextWikiQueries(ctx: TopicContext): string[] {
 async function getTopicWikiContext(
   ctx: TopicContext,
 ): Promise<WikiContext | null> {
-  for (const q of buildContextWikiQueries(ctx)) {
+  const queries = buildContextWikiQueries(ctx);
+  const head = queries.slice(0, 3);
+  const tail = queries.slice(3);
+
+  if (head.length > 0) {
+    const batch = await Promise.all(head.map((q) => getWikiContext(q)));
+    for (const wiki of batch) {
+      if (wiki && wikiRelatesToTopicContext(ctx, wiki)) return wiki;
+    }
+  }
+
+  for (const q of tail) {
     const wiki = await getWikiContext(q);
     if (wiki && wikiRelatesToTopicContext(ctx, wiki)) return wiki;
   }
@@ -136,15 +147,32 @@ async function wikiForSide(name: string): Promise<WikiContext | null> {
   return null;
 }
 
-export async function getDebateSources(
-  ctx: TopicContext,
-): Promise<DebateSources> {
+const sourcesCache = new Map<string, Promise<DebateSources>>();
+
+function sourcesCacheKey(ctx: TopicContext): string {
+  return `${ctx.topic}|${ctx.sideA ?? ""}|${ctx.sideB ?? ""}`;
+}
+
+async function loadDebateSources(ctx: TopicContext): Promise<DebateSources> {
   const [primary, sideA, sideB] = await Promise.all([
     getTopicWikiContext(ctx),
     ctx.sideA ? wikiForSide(ctx.sideA) : Promise.resolve(null),
     ctx.sideB ? wikiForSide(ctx.sideB) : Promise.resolve(null),
   ]);
   return { primary, sideA, sideB };
+}
+
+export async function getDebateSources(
+  ctx: TopicContext,
+): Promise<DebateSources> {
+  const key = sourcesCacheKey(ctx);
+  let pending = sourcesCache.get(key);
+  if (!pending) {
+    pending = loadDebateSources(ctx);
+    sourcesCache.set(key, pending);
+    pending.catch(() => sourcesCache.delete(key));
+  }
+  return pending;
 }
 
 export function prefetchDebateSources(topic: string): void {
@@ -154,13 +182,13 @@ export function prefetchDebateSources(topic: string): void {
   });
 }
 
-function sideNameForPersona(
+function entityForPersona(
   ctx: TopicContext,
   personaId: PersonaId,
 ): string | null {
-  if (personaId === "pro") return ctx.sideA;
-  if (personaId === "con") return ctx.sideB;
-  return null;
+  if (personaId === "atlas") return ctx.sideA;
+  if (personaId === "cipher") return ctx.sideB;
+  return ctx.displayTopic || ctx.topic;
 }
 
 function pickWikiCue(
@@ -207,29 +235,23 @@ export function factCueForPrompt(
   history: DebateMessage[],
   round: number,
 ): string | null {
-  if (personaId === "moderator") return null;
-
   const seed =
-    round * 11 + (personaId === "pro" ? 1 : personaId === "con" ? 2 : 3);
+    round * 11 + (personaId === "atlas" ? 1 : personaId === "cipher" ? 2 : 3);
 
   if (ctx.sideA && ctx.sideB) {
-    if (personaId === "pro") {
+    if (personaId === "atlas") {
       return pickCueForEntity(ctx.sideA, sources.sideA, history, seed, ctx);
     }
-    if (personaId === "con") {
+    if (personaId === "cipher") {
       return pickCueForEntity(ctx.sideB, sources.sideB, history, seed, ctx);
     }
-    if (personaId === "neutral") {
-      const a = pickCueForEntity(ctx.sideA, sources.sideA, history, seed, ctx);
-      const b = pickCueForEntity(ctx.sideB, sources.sideB, history, seed + 1, ctx);
-      if (a && b) return `${ctx.sideA}:${a}|${ctx.sideB}:${b}`;
-      if (a) return `${ctx.sideA}:${a}`;
-      if (b) return `${ctx.sideB}:${b}`;
-      return null;
-    }
+    const a = pickCueForEntity(ctx.sideA, sources.sideA, history, seed, ctx);
+    const b = pickCueForEntity(ctx.sideB, sources.sideB, history, seed + 1, ctx);
+    if (a && b) return `${ctx.sideA}:${a}|${ctx.sideB}:${b}`;
+    if (a) return `${ctx.sideA}:${a}`;
+    if (b) return `${ctx.sideB}:${b}`;
+    return null;
   }
-
-  if (personaId === "neutral") return null;
 
   const topicKey = ctx.displayTopic || ctx.topic;
   return pickWikiCue(sources.primary, topicKey, history, seed, ctx);
@@ -280,12 +302,12 @@ export function weaveFactIntoSpeech(
   personaId: PersonaId,
   seed: number,
 ): string {
-  const side = sideNameForPersona(ctx, personaId);
+  const side = entityForPersona(ctx, personaId);
   const templates = DOMAIN_WEAVE[ctx.domain].map((t) =>
-    t.replace("{side}", side ?? "이쪽").replace("{f}", fact),
+    t.replace("{side}", side ?? "이 주제").replace("{f}", fact),
   );
 
-  if (personaId === "neutral") {
+  if (personaId === "ember") {
     return pickSeeded(
       [
         `${fact} — 비교 기준을 여기에 둬야 함.`,
@@ -309,7 +331,7 @@ export function speechFactLine(
   const cue = factCueForPrompt(sources, ctx, personaId, history, round + seed);
   if (!cue) return null;
 
-  if (personaId === "neutral" && cue.includes("|")) {
+  if (personaId === "ember" && cue.includes("|")) {
     const parts = cue.split("|");
     const aFact = parts[0]?.includes(":")
       ? parts[0].split(":").slice(1).join(":")
@@ -328,7 +350,7 @@ export function speechFactLine(
     }
   }
 
-  if (personaId === "neutral" && cue.includes(":") && ctx.sideA && ctx.sideB) {
+  if (personaId === "ember" && cue.includes(":") && ctx.sideA && ctx.sideB) {
     const [label, fact] = [cue.split(":")[0], cue.split(":").slice(1).join(":")];
     return `${label} 쪽은 ${fact} 정도로 보임.`;
   }

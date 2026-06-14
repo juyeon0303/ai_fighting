@@ -154,9 +154,9 @@ export function hasGroundTruthViolation(
   content: string,
 ): boolean {
   const side =
-    personaId === "pro"
+    personaId === "atlas"
       ? ctx.sideA
-      : personaId === "con"
+      : personaId === "cipher"
         ? ctx.sideB
         : null;
   if (side && speechViolatesGroundTruth(side, content)) return true;
@@ -217,9 +217,14 @@ export function roundFocusAngle(
   angles: string[],
   round: number,
 ): string {
-  const offset = personaId === "pro" ? 0 : personaId === "con" ? 1 : 2;
+  const offset = personaId === "atlas" ? 0 : personaId === "cipher" ? 1 : 2;
   const idx = (round - 1 + offset) % angles.length;
   return angles[idx] ?? angles[0];
+}
+
+/** 찬반중립 토론 프레이밍 */
+export function usesDebateStanceFraming(content: string): boolean {
+  return /찬성|반대|중립|찬성임|반대임|옹호\s*입장|반대\s*입장/.test(content);
 }
 
 export function acceptDebateTurn(
@@ -229,16 +234,11 @@ export function acceptDebateTurn(
   ctx?: TopicContext,
 ): boolean {
   if (isEssayTone(content)) return false;
+  if (usesDebateStanceFraming(content)) return false;
   if (isTooFormalForDebate(content)) return false;
   if (isTooRepetitive(history, content, personaId)) return false;
   if (hasAwkwardSourceCitation(content)) return false;
-  if (personaId === "neutral" && isNeutralSummaryTemplate(content)) {
-    return false;
-  }
   if (ctx) {
-    if (personaId === "neutral" && isNeutralTakingSide(ctx, content)) {
-      return false;
-    }
     if (hasGroundTruthViolation(ctx, personaId, content)) return false;
     if (hasTopicDomainMismatch(ctx, content)) return false;
   }

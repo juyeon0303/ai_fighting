@@ -1,17 +1,14 @@
 "use client";
 
 import type { DebateMessage } from "@/lib/types";
-import { PERSONAS } from "@/lib/personas";
+import { getPersona, normalizePersonaId } from "@/lib/personas";
 
-const CLASH_KEYWORDS = ["반박", "틀렸", "동의할 수 없", "아닙니다", "문제", "위험"];
+const SPARK_KEYWORDS = ["반박", "틀렸", "아닌데", "그건", "근데", "다르게"];
 
-function isClashMessage(message: DebateMessage, prev?: DebateMessage): boolean {
+function isSparkMessage(message: DebateMessage, prev?: DebateMessage): boolean {
   if (!prev) return false;
-  const isOpposing =
-    (prev.personaId === "pro" && message.personaId === "con") ||
-    (prev.personaId === "con" && message.personaId === "pro");
-  if (!isOpposing) return false;
-  return CLASH_KEYWORDS.some((k) => message.content.includes(k));
+  if (prev.personaId === message.personaId) return false;
+  return SPARK_KEYWORDS.some((k) => message.content.includes(k));
 }
 
 interface MessageBubbleProps {
@@ -21,18 +18,19 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message, prevMessage, isNew }: MessageBubbleProps) {
-  const persona = PERSONAS[message.personaId];
-  const clash = isClashMessage(message, prevMessage);
+  const persona = getPersona(normalizePersonaId(message.personaId));
+  const pid = normalizePersonaId(message.personaId);
+  const spark = isSparkMessage(message, prevMessage);
   const slideFrom =
-    message.personaId === "pro"
+    pid === "atlas"
       ? "msg-slide-right"
-      : message.personaId === "con"
+      : pid === "cipher"
         ? "msg-slide-left"
         : "";
 
   return (
     <div
-      className={`flex gap-3 ${isNew ? "msg-enter" : ""} ${slideFrom} ${clash ? "msg-clash" : ""}`}
+      className={`flex gap-3 ${isNew ? "msg-enter" : ""} ${slideFrom} ${spark ? "msg-clash" : ""}`}
     >
       <div
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg transition-transform ${isNew ? "avatar-pop" : ""}`}
@@ -45,10 +43,28 @@ export function MessageBubble({ message, prevMessage, isNew }: MessageBubbleProp
           <span className="text-sm font-semibold" style={{ color: persona.color }}>
             {persona.name}
           </span>
+          <span className="text-xs text-white/30">{persona.role}</span>
           <span className="text-xs text-white/30">라운드 {message.round}</span>
-          {clash && (
-            <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] text-red-400">
-              격돌
+          {message.llmSource && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] ${
+                message.llmSource === "gemini"
+                  ? "bg-sky-500/15 text-sky-300"
+                  : message.llmSource === "openai"
+                    ? "bg-emerald-500/15 text-emerald-300"
+                    : "bg-amber-500/15 text-amber-300"
+              }`}
+            >
+              {message.llmSource === "gemini"
+                ? "Gemini"
+                : message.llmSource === "openai"
+                  ? "GPT"
+                  : "엔진"}
+            </span>
+          )}
+          {spark && (
+            <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
+              반응
             </span>
           )}
         </div>
@@ -75,7 +91,7 @@ interface TypingIndicatorProps {
 
 export function TypingIndicator({ personaId }: TypingIndicatorProps) {
   const color = personaId
-    ? PERSONAS[personaId as keyof typeof PERSONAS]?.color ?? "#8b5cf6"
+    ? getPersona(normalizePersonaId(personaId)).color
     : "#8b5cf6";
 
   return (
@@ -89,7 +105,7 @@ export function TypingIndicator({ personaId }: TypingIndicatorProps) {
           />
         ))}
       </div>
-      다음 AI가 발언 준비 중...
+      다음 천재가 말 준비 중...
     </div>
   );
 }

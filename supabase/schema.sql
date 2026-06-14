@@ -9,7 +9,7 @@ create table if not exists debates (
   status text not null default 'active' check (status in ('active', 'paused', 'ended')),
   round int not null default 0,
   max_rounds int not null default 20,
-  turn_interval_ms int not null default 8000,
+  turn_interval_ms int not null default 1500,
   last_turn_at timestamptz,
   report_status text not null default 'none' check (report_status in ('none', 'generating', 'done')),
   llm_mode text not null default 'free' check (llm_mode in ('free', 'user_api')),
@@ -30,9 +30,10 @@ create table if not exists debates (
 create table if not exists debate_messages (
   id uuid primary key default gen_random_uuid(),
   debate_id uuid not null references debates(id) on delete cascade,
-  persona_id text not null check (persona_id in ('pro', 'con', 'neutral', 'moderator')),
+  persona_id text not null check (persona_id in ('atlas', 'cipher', 'ember', 'pro', 'con', 'neutral', 'moderator')),
   content text not null,
   round int not null,
+  llm_source text check (llm_source is null or llm_source in ('openai', 'gemini', 'engine')),
   created_at timestamptz not null default now()
 );
 
@@ -59,6 +60,9 @@ create table if not exists debate_reports (
   recommendation text not null,
   generated_at timestamptz not null default now()
 );
+
+-- 기존 DB: debate_messages에 llm_source 컬럼 추가
+-- alter table debate_messages add column if not exists llm_source text check (llm_source is null or llm_source in ('openai', 'gemini', 'engine'));
 
 create index if not exists idx_debate_messages_debate_id on debate_messages(debate_id);
 create index if not exists idx_timeline_events_debate_id on timeline_events(debate_id);

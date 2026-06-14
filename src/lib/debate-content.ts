@@ -1,8 +1,13 @@
 import type { DebateMessage, PersonaId } from "./types";
 import type { DebateMode, TopicContext, TopicDomain } from "./topic-context";
-import { getPersonaStance } from "./topic-context";
+import { getGeniusLens } from "./topic-context";
+import { DEBATE_TURN_ORDER } from "./personas";
 import { DEBATE_STYLE, DEBATE_BAD_EXAMPLES, FRIEND_TONE_RULE } from "./debate-style";
-import { compactHistory } from "./debate-turn-budget";
+import {
+  clampTurnContent,
+  compactHistory,
+  softenFormalTone,
+} from "./debate-turn-budget";
 import type { DebateSources } from "./debate-sources";
 import { factCueForPrompt } from "./debate-sources";
 import { FRESHNESS_RULE, pickNovelLens } from "./debate-novelty";
@@ -82,54 +87,54 @@ function hasBannedGeneric(text: string): boolean {
 
 const DOMAIN_HINTS: Record<
   TopicDomain,
-  { pro: string[]; con: string[]; neutral: string[] }
+  { atlas: string[]; cipher: string[]; ember: string[] }
 > = {
   esports: {
-    pro: ["월드 성적", "라인전 장악력", "팀 기여도", "메타 적응", "클러치 장면"],
-    con: ["최근 폼", "라인전 밀림", "팀플레이 한계", "메타 변화 적응 실패"],
-    neutral: ["시즌별 편차", "팀 환경", "포지션 차이", "비교 기준 설정"],
+    atlas: ["월드 성적", "라인전 장악력", "팀 기여도", "메타 적응", "클러치 장면"],
+    cipher: ["최근 폼", "라인전 밀림", "팀플레이 한계", "메타 변화 적응 실패"],
+    ember: ["시즌별 편차", "팀 환경", "포지션 차이", "비교 기준 설정"],
   },
   food: {
-    pro: ["맛의 깊이", "만족감", "가성비", "식사 경험", "조합의 다양성"],
-    con: ["질림", "건강 부담", "가격", "일관성 부족", "과대평가"],
-    neutral: ["취향 차이", "상황별 적합성", "메뉴 편차"],
+    atlas: ["맛의 깊이", "만족감", "가성비", "식사 경험", "조합의 다양성"],
+    cipher: ["질림", "건강 부담", "가격", "일관성 부족", "과대평가"],
+    ember: ["취향 차이", "상황별 적합성", "메뉴 편차"],
   },
   tech: {
-    pro: ["생산성", "생태계", "유지보수성", "확장성", "사용자 경험"],
-    con: ["러닝커브", "레거시 부담", "의존성", "복잡도", "비용"],
-    neutral: ["팀 규모", "프로젝트 성격", "장기 운영 관점"],
+    atlas: ["생산성", "생태계", "유지보수성", "확장성", "사용자 경험"],
+    cipher: ["러닝커브", "레거시 부담", "의존성", "복잡도", "비용"],
+    ember: ["팀 규모", "프로젝트 성격", "장기 운영 관점"],
   },
   entertainment: {
-    pro: ["대중성", "완성도", "영향력", "재미", "문화적 파급"],
-    con: ["피로감", "상업성 과잉", "깊이 부족", "유행 의존"],
-    neutral: ["취향", "세대 차이", "감상 맥락"],
+    atlas: ["대중성", "완성도", "영향력", "재미", "문화적 파급"],
+    cipher: ["피로감", "상업성 과잉", "깊이 부족", "유행 의존"],
+    ember: ["취향", "세대 차이", "감상 맥락"],
   },
   social: {
-    pro: ["실용성", "삶의 질", "관계 개선", "효율", "행복감"],
-    con: ["부작용", "불평등", "스트레스", "현실적 한계"],
-    neutral: ["개인차", "환경", "조건부 적용"],
+    atlas: ["실용성", "삶의 질", "관계 개선", "효율", "행복감"],
+    cipher: ["부작용", "불평등", "스트레스", "현실적 한계"],
+    ember: ["개인차", "환경", "조건부 적용"],
   },
   science: {
-    pro: [
+    atlas: [
       "실험·관측이 이론을 뒷받침",
       "수식 예측이 실제와 맞음",
       "반복 검증에서 살아남음",
     ],
-    con: [
+    cipher: [
       "반례 실험이 존재",
       "관측으로 아직 증명 못 함",
       "이론 전제가 허약함",
     ],
-    neutral: [
+    ember: [
       "용어 정의부터 다름",
       "가능/불가능 기준이 애매",
       "증거 부족해서 성급한 결론은 위험",
     ],
   },
   general: {
-    pro: ["실질적 이점", "경험상 가치", "합리적 근거", "긍정적 효과"],
-    con: ["한계", "부정적 측면", "대안 우위", "현실적 문제"],
-    neutral: ["맥락", "조건", "균형"],
+    atlas: ["실질적 이점", "경험상 가치", "합리적 근거", "긍정적 효과"],
+    cipher: ["한계", "부정적 측면", "대안 우위", "현실적 문제"],
+    ember: ["맥락", "조건", "균형"],
   },
 };
 
@@ -158,26 +163,72 @@ export function validateResponse(
     issues.push("formal_tone");
   }
 
-  if (personaId !== "moderator" && !hasAnchor(ctx, content)) {
+  if (!hasAnchor(ctx, content)) {
     issues.push("missing_anchor");
-  }
-
-  if (
-    (ctx.mode === "versus" || ctx.mode === "comparison") &&
-    ctx.sideA &&
-    ctx.sideB
-  ) {
-    if (personaId === "pro" && !content.includes(ctx.sideA)) {
-      issues.push(`pro_missing_${ctx.sideA}`);
-    }
-    if (personaId === "con" && !content.includes(ctx.sideB)) {
-      issues.push(`con_missing_${ctx.sideB}`);
-    }
   }
 
   if (content.length < 12) issues.push("too_short");
 
   return { ok: issues.length === 0, issues };
+}
+
+/** API 응답에 주제·이름이 빠졌을 때 자연스럽게 보강 */
+export function ensureTopicInTurn(
+  ctx: TopicContext,
+  _personaId: PersonaId,
+  content: string,
+): string {
+  if (hasAnchor(ctx, content)) return content;
+
+  const hook = ctx.displayTopic || ctx.topic;
+  const short = hook.length > 28 ? `${hook.slice(0, 26)}…` : hook;
+  if (/^(난|나는)\s/.test(content)) {
+    return content.replace(/^(난|나는)/, `$1 ${short}`);
+  }
+  return `${short} 얘기면 ${content}`;
+}
+
+/** Gemini/GPT 출력 — 과한 검열 대신 보정 후 통과 */
+export function polishApiResponse(
+  ctx: TopicContext,
+  personaId: PersonaId,
+  history: DebateMessage[],
+  raw: string,
+): string | null {
+  let text = softenFormalTone(raw);
+  text = softenFormalTone(text);
+  text = clampTurnContent(text, personaId);
+  text = ensureTopicInTurn(ctx, personaId, text);
+  text = softenFormalTone(text);
+
+  if (text.length < 12) return null;
+  if (!acceptDebateTurn(history, personaId, text, ctx)) return null;
+
+  const issues = validateResponse(ctx, personaId, text).issues.filter(
+    (issue) => issue !== "missing_anchor" && issue !== "formal_tone",
+  );
+  if (issues.length > 0) return null;
+
+  return text;
+}
+
+export function apiPolishRejectHint(
+  ctx: TopicContext,
+  personaId: PersonaId,
+  history: DebateMessage[],
+  raw: string,
+): string {
+  const polished = polishApiResponse(ctx, personaId, history, raw);
+  if (polished) return "";
+
+  const softened = softenFormalTone(raw);
+  const clamped = clampTurnContent(softened, personaId);
+  if (clamped.length < 12) return "1~2문장으로 짧게";
+  if (!acceptDebateTurn(history, personaId, clamped, ctx)) {
+    return "친구 반말로, 반복·위키인용·중립편들기 없이";
+  }
+  if (hasBannedGeneric(clamped)) return "뻔한 정책 말투 빼고";
+  return `${ctx.displayTopic || ctx.topic} 키워드 포함해서`;
 }
 
 export async function generateMockTurn(
@@ -193,9 +244,9 @@ export async function generateMockTurn(
 
 function modeRules(ctx: TopicContext): string {
   const rules: Record<DebateMode, string> = {
-    versus: `찬=${ctx.sideA}|반=${ctx.sideB}|이름 필수`,
-    comparison: `찬=${ctx.sideA}우위|반=${ctx.sideB}우위`,
-    proposition: `답:${ctx.debateQuestion}`,
+    versus: `비교:${ctx.sideA} vs ${ctx.sideB}|이름 자연스럽게`,
+    comparison: `비교:${ctx.sideA}·${ctx.sideB}|입장 나누지 말 것`,
+    proposition: `질문:${ctx.debateQuestion}`,
     choice: `후보 달리|${ctx.topic}`,
     wh_question: `Q:${ctx.debateQuestion}`,
     casual: `입력「${ctx.topic}」→${ctx.debateQuestion}`,
@@ -206,21 +257,12 @@ function modeRules(ctx: TopicContext): string {
 
 export function passesMinimumQuality(
   ctx: TopicContext,
-  personaId: PersonaId,
+  _personaId: PersonaId,
   content: string,
 ): boolean {
   const text = content.trim();
   if (text.length < 12) return false;
-  if (personaId !== "moderator" && !hasAnchor(ctx, text)) return false;
-  if (
-    (ctx.mode === "versus" || ctx.mode === "comparison") &&
-    ctx.sideA &&
-    ctx.sideB
-  ) {
-    if (personaId === "pro" && !text.includes(ctx.sideA)) return false;
-    if (personaId === "con" && !text.includes(ctx.sideB)) return false;
-  }
-  return true;
+  return hasAnchor(ctx, text);
 }
 
 function personaHint(
@@ -228,42 +270,25 @@ function personaHint(
   hints: (typeof DOMAIN_HINTS)[TopicDomain],
   round: number,
 ): string {
-  const pool =
-    personaId === "pro"
-      ? hints.pro
-      : personaId === "con"
-        ? hints.con
-        : hints.neutral;
+  const pool = hints[personaId];
   return roundFocusAngle(personaId, pool, round);
 }
 
 function rebuttalRule(personaId: PersonaId, round: number): string {
-  if (personaId === "neutral") {
-    return "중립:한쪽편금지.나는OO편금지.양쪽이름병렬.위키인용금지.";
-  }
   if (round <= 1) return "";
-  return "상대방금인용후반박필수.";
+  return "직전발언인용후이어서말할것.찬반중립입장금지.";
 }
 
-function exampleLine(ctx: TopicContext): string {
-  if (ctx.sideA && ctx.sideB) {
-    const hint =
-      ctx.domain === "food"
-        ? "상황·입맛"
-        : ctx.domain === "tech"
-          ? "쓸 때 체감"
-          : ctx.domain === "social"
-            ? "현실 조건"
-            : "숨은 변수";
-    return `예:난 ${ctx.sideA} 쪽인데 ${hint} 보면 지금은 이쪽이 더 맞는 것 같아.`;
-  }
-  const openers: Partial<Record<TopicDomain, string>> = {
-    food: "예:난 찬성인데 혼밥·야식이면 이게 더 낫다고 봐.",
-    tech: "예:난 찬성인데 써보면 생산성 체감이 더 크거든.",
-    social: "예:난 찬성인데 일상에서 바로 이득이 있어 보여.",
-    science: "예:난 다세계 해석 기준으론 열릴 여지는 있다고 봐.",
+function exampleLine(ctx: TopicContext, personaId: PersonaId): string {
+  const examples: Record<PersonaId, string> = {
+    atlas: `예:난 ${ctx.topic} 보면 큰 그림부터 이렇게 보거든.`,
+    cipher: `예:논리만 따지면 ${ctx.topic}은 정의부터 애매해.`,
+    ember: `예:비유하자면 ${ctx.topic}은 이렇게 느껴져.`,
   };
-  return openers[ctx.domain] ?? "예:난 이쪽인데 숨은 변수 하나 짚을게.";
+  if (ctx.sideA && ctx.sideB) {
+    return `예:난 ${ctx.sideA}랑 ${ctx.sideB} 둘 다 보면 변수가 갈려.`;
+  }
+  return examples[personaId];
 }
 
 export function buildDebatePrompt(
@@ -273,43 +298,35 @@ export function buildDebatePrompt(
   round: number,
   sources?: DebateSources | null,
 ): string {
-  const stance = getPersonaStance(personaId, ctx);
+  const lens = getGeniusLens(personaId, ctx);
   const hints = DOMAIN_HINTS[ctx.domain];
-  const lastOpp = history
-    .slice()
-    .reverse()
-    .find(
-      (m) =>
-        (personaId === "pro" && m.personaId === "con") ||
-        (personaId === "con" && m.personaId === "pro"),
-    );
+  const lastPeer = history.length > 0 ? history[history.length - 1] : null;
 
-  const oppLine = lastOpp
-    ? `상대방금:${truncateSnippet(lastOpp.content, 80)}`
+  const peerLine = lastPeer
+    ? `직전:${truncateSnippet(lastPeer.content, 80)}`
     : "";
 
-  const factLine =
-    sources && personaId !== "moderator"
-      ? factCueForPrompt(sources, ctx, personaId, history, round)
-      : null;
+  const factLine = sources
+    ? factCueForPrompt(sources, ctx, personaId, history, round)
+    : null;
 
   return [
     `주제:${ctx.topic}`,
-    `역할:${stance}`,
+    `시각:${lens}`,
     `R${round}`,
     modeRules(ctx),
     `이번각도:${personaHint(personaId, hints, round)}`,
     `신선렌즈:${pickNovelLens(ctx.domain, round, personaId)}`,
     factLine ? `팩트참고:${factLine}(출처말하지말것)` : null,
-    `직전:${compactHistory(history)}`,
+    `대화:${compactHistory(history)}`,
     `이미씀금지:${bannedPhraseReminder(history)}`,
-    oppLine,
+    peerLine,
     rebuttalRule(personaId, round),
     DEBATE_STYLE,
     FRIEND_TONE_RULE,
     FRESHNESS_RULE,
     `금지:${DEBATE_BAD_EXAMPLES}`,
-    exampleLine(ctx),
+    exampleLine(ctx, personaId),
   ]
     .filter(Boolean)
     .join("\n");
@@ -332,7 +349,7 @@ export async function simulateFullRound(
 ): Promise<{ ctx: TopicContext; messages: DebateMessage[]; validations: ValidationResult[] }> {
   const { parseTopic } = await import("./topic-context");
   const ctx = parseTopic(topic);
-  const order: PersonaId[] = ["pro", "con", "neutral"];
+  const order = DEBATE_TURN_ORDER;
   const messages: DebateMessage[] = [];
   const validations: ValidationResult[] = [];
 

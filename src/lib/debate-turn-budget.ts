@@ -2,10 +2,9 @@ import type { DebateMessage, PersonaId } from "./types";
 
 /** 발언 1회 최대 출력 토큰 — 의미 유지 최소 한도 */
 export const OUTPUT_TOKENS: Record<PersonaId, number> = {
-  pro: 100,
-  con: 100,
-  neutral: 120,
-  moderator: 110,
+  atlas: 100,
+  cipher: 100,
+  ember: 120,
 };
 
 /** 프롬프트에 넣을 직전 발언 수 */
@@ -15,10 +14,9 @@ export const HISTORY_LIMIT = 3;
 export const HISTORY_SNIPPET_CHARS = 90;
 
 const PERSONA_SHORT: Record<PersonaId, string> = {
-  pro: "찬",
-  con: "반",
-  neutral: "중",
-  moderator: "사",
+  atlas: "아",
+  cipher: "사",
+  ember: "엠",
 };
 
 export function maxOutputTokens(personaId: PersonaId): number {
@@ -45,8 +43,7 @@ export function compactHistory(history: DebateMessage[]): string {
 
 /** API가 길게 써도 1~2문장으로 자르기 (문장 경계 우선) */
 export function clampTurnContent(content: string, personaId: PersonaId): string {
-  const maxChars =
-    personaId === "neutral" || personaId === "moderator" ? 150 : 120;
+  const maxChars = personaId === "ember" ? 150 : 120;
   const normalized = content.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxChars) return normalized;
 

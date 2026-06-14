@@ -21,7 +21,7 @@ export default function Home() {
             </span>
           </h1>
           <p className="mx-auto max-w-lg text-white/50">
-            찬성 AI, 반대 AI, 중립 AI가 백그라운드에서 끊임없이 토론합니다.
+            천재 AI 3명이 백그라운드에서 주제를 놓고 끊임없이 대화합니다.
           </p>
         </div>
 
@@ -33,9 +33,9 @@ export default function Home() {
               토론 기록
             </h2>
             <div className="flex gap-3 text-xs text-white/30">
-              <span>🟢 찬성</span>
-              <span>🔴 반대</span>
-              <span>🔵 중립</span>
+              <span>🌌 아틀라스</span>
+              <span>🔑 사이퍼</span>
+              <span>✨ 엠버</span>
             </div>
           </div>
           <DebateList />

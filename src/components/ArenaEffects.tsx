@@ -1,10 +1,9 @@
 "use client";
 
-import type { PersonaId } from "@/lib/types";
-import { PERSONAS } from "@/lib/personas";
+import { PERSONAS, normalizePersonaId } from "@/lib/personas";
 
 interface ArenaEffectsProps {
-  lastPersonaId: PersonaId | null;
+  lastPersonaId: string | null;
   flashKey: number;
   isClash: boolean;
 }
@@ -14,7 +13,9 @@ export function ArenaEffects({
   flashKey,
   isClash,
 }: ArenaEffectsProps) {
-  const color = lastPersonaId ? PERSONAS[lastPersonaId].color : "#8b5cf6";
+  const color = lastPersonaId
+    ? PERSONAS[normalizePersonaId(lastPersonaId)].color
+    : "#8b5cf6";
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">

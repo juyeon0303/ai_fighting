@@ -2,12 +2,11 @@ import OpenAI from "openai";
 import type { DebateMessage, PersonaId } from "./types";
 import type { TopicContext } from "./topic-context";
 import {
+  apiPolishRejectHint,
   buildDebatePrompt,
   generateMockTurn,
-  passesMinimumQuality,
-  validateResponse,
+  polishApiResponse,
 } from "./debate-content";
-import { acceptDebateTurn } from "./debate-quality";
 import type { PersonaLlmRuntime } from "./debate-llm-config";
 import { requestGeminiTurn } from "./gemini";
 import { DEFAULT_OPENAI_MODEL } from "./openai-models";
@@ -16,11 +15,10 @@ import { getDebateSources } from "./debate-sources";
 import {
   clampTurnContent,
   maxOutputTokens,
-  softenFormalTone,
 } from "./debate-turn-budget";
 
 const SYSTEM =
-  "찬반중립은 친한 친구. 무난한 반말로 1~2문장 끝까지 말해. 해요체·논문체 금지. 욕설·ㅋㅋ 금지. 중립은 한쪽 편 금지.";
+  "천재 친구 3명이 주제 수다. 무난한 반말 1~2문장. 찬성/반대/중립 입장 금지. 해요체·논문체 금지.";
 
 export type LlmStopReason = "auth" | "quota" | null;
 
@@ -55,18 +53,46 @@ function mapApiError(error: unknown): LlmStopReason {
   return null;
 }
 
-function polishApiTurn(
+async function tryPolishApiTurn(
   ctx: TopicContext,
   personaId: PersonaId,
   history: DebateMessage[],
   raw: string,
-): string | null {
-  const softened = softenFormalTone(raw);
-  const clamped = clampTurnContent(softened, personaId);
-  if (!passesMinimumQuality(ctx, personaId, clamped)) return null;
-  if (!acceptDebateTurn(history, personaId, clamped, ctx)) return null;
-  if (!validateResponse(ctx, personaId, clamped).ok) return null;
-  return clamped;
+  runtime: PersonaLlmRuntime,
+  prompt: string,
+): Promise<{ content: string | null; tokensUsed: number }> {
+  const polished = polishApiResponse(ctx, personaId, history, raw);
+  if (polished) {
+    return { content: polished, tokensUsed: 0 };
+  }
+
+  const hint = apiPolishRejectHint(ctx, personaId, history, raw);
+  if (!hint || runtime.provider !== "gemini") {
+    return { content: null, tokensUsed: 0 };
+  }
+
+  const retry = await requestGeminiTurn(
+    runtime.apiKey!,
+    runtime.model,
+    SYSTEM,
+    `${prompt}\n\n[다시] ${hint}. 친구 반말 1~2문장.`,
+    maxOutputTokens(personaId),
+  );
+
+  if (!retry.content) {
+    return { content: null, tokensUsed: retry.tokensUsed };
+  }
+
+  const retryPolished = polishApiResponse(
+    ctx,
+    personaId,
+    history,
+    retry.content,
+  );
+  return {
+    content: retryPolished,
+    tokensUsed: retry.tokensUsed,
+  };
 }
 
 async function requestOpenAiTurn(
@@ -151,19 +177,31 @@ async function generateWithProvider(
   if (result.stopReason) {
     lastStopReason = result.stopReason;
   } else if (result.content) {
-    const polished = polishApiTurn(ctx, personaId, history, result.content);
-    if (polished) {
+    const polished = await tryPolishApiTurn(
+      ctx,
+      personaId,
+      history,
+      result.content,
+      runtime,
+      prompt,
+    );
+    totalTokens += polished.tokensUsed;
+
+    if (polished.content) {
       return {
-        content: polished,
+        content: polished.content,
         tokensUsed: totalTokens,
         source,
         stopReason: null,
       };
     }
     console.warn(
-      `[llm] ${source} output rejected (repetitive/essay) — smart engine`,
+      `[llm] ${source} output rejected — engine fallback`,
       personaId,
+      apiPolishRejectHint(ctx, personaId, history, result.content),
     );
+  } else if (!result.stopReason) {
+    console.warn(`[llm] ${source} empty response — engine fallback`, personaId);
   }
 
   const fallback = await generateMockTurn(

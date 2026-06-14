@@ -1,3 +1,5 @@
+import type { PersonaId } from "./types";
+
 export type DebateMode =
   | "versus"
   | "proposition"
@@ -131,7 +133,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: `${versus.sideA}와 ${versus.sideB} 중 누가/무엇이 더 나은가`,
       sideA: versus.sideA,
       sideB: versus.sideB,
-      brief: `대결 토론: 찬성=${versus.sideA} 편, 반대=${versus.sideB} 편`,
+      brief: `천재 3명이 ${versus.sideA} vs ${versus.sideB}를 각자 시각으로 풀어봄`,
       domain,
       anchors: buildAnchors({
         topic,
@@ -151,7 +153,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: `${comparison.sideA}가 ${comparison.sideB}보다 나은가`,
       sideA: comparison.sideA,
       sideB: comparison.sideB,
-      brief: `비교 토론: 찬성=${comparison.sideA} 우위, 반대=${comparison.sideB} 우위`,
+      brief: `천재 3명이 ${comparison.sideA} vs ${comparison.sideB} 비교를 각자 풀어봄`,
       domain,
       anchors: buildAnchors({
         topic,
@@ -169,7 +171,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: topic.replace(/\?$/, ""),
       sideA: null,
       sideB: null,
-      brief: "선택·최고 논쟁: 찬성은 한 가지 답을 옹호, 반대는 다른 답을 옹호",
+      brief: "천재 3명이 서로 다른 답을 내세우며 대화",
       domain,
       anchors: buildAnchors({ topic, debateQuestion: topic }),
     };
@@ -183,7 +185,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: topic,
       sideA: null,
       sideB: null,
-      brief: "최고/선택 토론: 서로 다른 후보를 옹호하며 겨룸",
+      brief: "천재 3명이 각자 다른 후보·관점으로 대화",
       domain,
       anchors: buildAnchors({ topic, debateQuestion: topic }),
     };
@@ -197,7 +199,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: topic,
       sideA: null,
       sideB: null,
-      brief: "질문형 토론: 찬성=한 가지 설명/입장, 반대=다른 설명/입장",
+      brief: "천재 3명이 서로 다른 설명·관점으로 대화",
       domain,
       anchors: buildAnchors({ topic, debateQuestion: topic }),
     };
@@ -211,7 +213,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: topic,
       sideA: null,
       sideB: null,
-      brief: "찬반 토론: 찬성=긍정, 반대=부정",
+      brief: "천재 3명이 주제를 각자 시각으로 대화",
       domain,
       anchors: buildAnchors({ topic, debateQuestion: topic }),
     };
@@ -226,7 +228,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion,
       sideA: null,
       sideB: null,
-      brief: `짧은 주제를 「${debateQuestion}」로 재구성해 토론`,
+      brief: `천재 3명이 「${debateQuestion}」을 각자 풀어봄`,
       domain,
       anchors: buildAnchors({ topic, displayTopic, debateQuestion }),
     };
@@ -239,33 +241,38 @@ export function parseTopic(raw: string): TopicContext {
     debateQuestion: `「${topic}」는 전반적으로 긍정적인가, 부정적인가`,
     sideA: null,
     sideB: null,
-    brief: "주제 토론: 찬성=긍정 해석, 반대=비판적 해석",
+    brief: "천재 3명이 주제를 각자 시각으로 대화",
     domain,
     anchors: buildAnchors({ topic, debateQuestion: topic }),
   };
 }
 
-export function getPersonaStance(
-  personaId: "pro" | "con" | "neutral" | "moderator",
+export function getGeniusLens(
+  personaId: PersonaId,
   ctx: TopicContext,
 ): string {
-  if ((ctx.mode === "versus" || ctx.mode === "comparison") && ctx.sideA && ctx.sideB) {
-    const map = {
-      pro: `「${ctx.sideA}」 편 — ${ctx.sideA}가 ${ctx.sideB}보다 낫다`,
-      con: `「${ctx.sideB}」 편 — ${ctx.sideB}가 ${ctx.sideA}보다 낫다`,
-      neutral: `${ctx.sideA}와 ${ctx.sideB} 비교 분석`,
-      moderator: "대결 진행",
-    };
-    return map[personaId];
-  }
+  const base = {
+    atlas: "1차 원리·큰 그림으로 본다",
+    cipher: "논리·정의·반례로 짚는다",
+    ember: "비유·직관·실험적으로 풀어본다",
+  }[personaId];
 
-  const map = {
-    pro: "긍정·옹호 입장",
-    con: "비판·반대 입장",
-    neutral: "균형 분석",
-    moderator: "진행",
-  };
-  return map[personaId];
+  if (
+    (ctx.mode === "versus" || ctx.mode === "comparison") &&
+    ctx.sideA &&
+    ctx.sideB
+  ) {
+    return `${base} — ${ctx.sideA} vs ${ctx.sideB}`;
+  }
+  return base;
+}
+
+/** @deprecated getGeniusLens 사용 */
+export function getPersonaStance(
+  personaId: PersonaId,
+  ctx: TopicContext,
+): string {
+  return getGeniusLens(personaId, ctx);
 }
 
 export function getModeLabel(mode: DebateMode): string {

@@ -13,6 +13,7 @@ import type {
   DebateMessage,
   DebateReport,
   DebateStatus,
+  MessageLlmSource,
   ReportStatus,
   TimelineEvent,
 } from "./types";
@@ -60,6 +61,7 @@ function rowToDebate(row: Record<string, unknown>): Debate {
 }
 
 function rowToMessage(row: Record<string, unknown>): DebateMessage {
+  const llmSource = row.llm_source as DebateMessage["llmSource"];
   return {
     id: row.id as string,
     debateId: row.debate_id as string,
@@ -67,6 +69,7 @@ function rowToMessage(row: Record<string, unknown>): DebateMessage {
     content: row.content as string,
     round: row.round as number,
     createdAt: row.created_at as string,
+    llmSource: llmSource ?? null,
   };
 }
 
@@ -362,30 +365,48 @@ export async function addMessage(
   personaId: DebateMessage["personaId"],
   content: string,
   round: number,
+  llmSource?: MessageLlmSource | null,
 ): Promise<DebateMessage> {
   const now = new Date().toISOString();
   const sb = getSupabase();
 
   if (sb) {
-    const { data, error } = await sb
+    let payload: Record<string, unknown> = {
+      debate_id: debateId,
+      persona_id: personaId,
+      content,
+      round,
+      created_at: now,
+    };
+    if (llmSource) payload.llm_source = llmSource;
+
+    let { data, error } = await sb
       .from("debate_messages")
-      .insert({
-        debate_id: debateId,
-        persona_id: personaId,
-        content,
-        round,
-        created_at: now,
-      })
+      .insert(payload)
       .select()
       .single();
+
+    if (error && llmSource) {
+      delete payload.llm_source;
+      ({ data, error } = await sb
+        .from("debate_messages")
+        .insert(payload)
+        .select()
+        .single());
+    }
     if (error) throw error;
+
+    const message = rowToMessage(data);
+    if (llmSource && !message.llmSource) {
+      message.llmSource = llmSource;
+    }
 
     await sb
       .from("debates")
       .update({ round, last_turn_at: now, updated_at: now })
       .eq("id", debateId);
 
-    return rowToMessage(data);
+    return message;
   }
 
   const db = ensureFileDb();
@@ -396,6 +417,7 @@ export async function addMessage(
     content,
     round,
     createdAt: now,
+    llmSource: llmSource ?? null,
   };
   db.messages.push(message);
 

@@ -8,8 +8,13 @@ import type {
   PersonaId,
   TimelineEvent,
 } from "@/lib/types";
-import { DEBATE_TURN_ORDER, PERSONAS } from "@/lib/personas";
-import { parseTopic, getPersonaStance, getModeLabel } from "@/lib/topic-context";
+import { parseTopic, getModeLabel } from "@/lib/topic-context";
+import {
+  DEBATE_TURN_ORDER,
+  PERSONAS,
+  geniusLens,
+  normalizePersonaId,
+} from "@/lib/personas";
 import {
   layoutLabel,
   personaProvider,
@@ -90,8 +95,8 @@ export function DebateArena({ debateId }: DebateArenaProps) {
           const prevMsg = prev[prev.length - 1];
           const clash =
             prevMsg &&
-            ((prevMsg.personaId === "pro" && msg.personaId === "con") ||
-              (prevMsg.personaId === "con" && msg.personaId === "pro"));
+            prevMsg.personaId !== msg.personaId &&
+            /반박|틀렸|아닌데|근데/.test(msg.content);
           if (clash) {
             setIsClash(true);
             setTimeout(() => setIsClash(false), 600);
@@ -201,6 +206,18 @@ export function DebateArena({ debateId }: DebateArenaProps) {
 
   const topicCtx = topic ? parseTopic(topic) : null;
 
+  const sourceStats = messages.reduce(
+    (acc, m) => {
+      if (m.llmSource === "gemini") acc.gemini += 1;
+      else if (m.llmSource === "openai") acc.openai += 1;
+      else if (m.llmSource === "engine") acc.engine += 1;
+      return acc;
+    },
+    { gemini: 0, openai: 0, engine: 0 },
+  );
+  const trackedSources =
+    sourceStats.gemini + sourceStats.openai + sourceStats.engine;
+
   return (
     <div className="relative flex h-full">
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -249,6 +266,18 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                       {layoutLabel(apiLayout)} · 토큰{" "}
                       {tokensUsed.toLocaleString()} /{" "}
                       {maxTokenBudget.toLocaleString()}
+                      {trackedSources > 0 && (
+                        <span className="text-white/45">
+                          {" "}
+                          · Gemini {sourceStats.gemini} · GPT {sourceStats.openai}
+                          {sourceStats.engine > 0 && (
+                            <span className="text-amber-400/90">
+                              {" "}
+                              · 엔진 {sourceStats.engine}
+                            </span>
+                          )}
+                        </span>
+                      )}
                       {tokensUsed === 0 && messages.length > 0 && status === "active" && (
                         <span className="text-amber-400/90">
                           {" "}
@@ -258,6 +287,12 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                             : apiConnectionIssue === "key_missing"
                               ? "API 키 없음 — 새 토론에서 키 다시 입력"
                               : "Gemini/GPT 연결 안 됨 → 무료 엔진"}
+                        </span>
+                      )}
+                      {tokensUsed > 0 && sourceStats.engine > 0 && (
+                        <span className="text-amber-400/90">
+                          {" "}
+                          · 일부 발언은 API 거절 후 엔진 대체
                         </span>
                       )}
                     </span>
@@ -332,10 +367,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
             {DEBATE_TURN_ORDER.map((id) => {
               const p = PERSONAS[id];
               const isActive = lastPersonaId === id && status === "active";
-              const label =
-                topicCtx && (id === "pro" || id === "con" || id === "neutral")
-                  ? getPersonaStance(id, topicCtx).split("—")[0].trim()
-                  : p.name;
+              const label = `${p.name} · ${geniusLens(id)}`;
               const providerBadge =
                 llmMode === "user_api" && apiLayout
                   ? providerLabel(personaProvider(apiLayout, id))
@@ -362,7 +394,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
           <div className="mx-auto max-w-2xl space-y-6">
             {messages.length === 0 && (
               <div className="py-20 text-center text-white/30">
-                AI들이 토론을 준비하고 있습니다...
+                천재 3명이 대화를 준비하고 있습니다...
               </div>
             )}
             {messages.map((msg, i) => (

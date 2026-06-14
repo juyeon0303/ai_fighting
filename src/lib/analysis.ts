@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { DebateMessage, DebateReport, TimelineEvent } from "./types";
-import { getPersona, TURNS_PER_ROUND } from "./personas";
+import { getPersona, normalizePersonaId, TURNS_PER_ROUND } from "./personas";
 import { parseTopic } from "./topic-context";
 import { DEFAULT_OPENAI_MODEL } from "./openai-models";
 import { DEFAULT_GEMINI_MODEL } from "./gemini-models";
@@ -13,12 +13,20 @@ function getRoundMessages(messages: DebateMessage[], round: number): DebateMessa
   return messages.filter((m) => m.round === round);
 }
 
-function detectConflict(messages: DebateMessage[]): boolean {
-  const pro = messages.find((m) => m.personaId === "pro");
-  const con = messages.find((m) => m.personaId === "con");
-  if (!pro || !con) return false;
+function msgsForGenius(
+  personaId: "atlas" | "cipher" | "ember",
+  messages: DebateMessage[],
+): DebateMessage[] {
+  const legacy: Record<typeof personaId, string[]> = {
+    atlas: ["atlas", "pro"],
+    cipher: ["cipher", "con"],
+    ember: ["ember", "neutral"],
+  };
+  return messages.filter((m) => legacy[personaId].includes(m.personaId));
+}
 
-  const combined = `${pro.content} ${con.content}`;
+function detectConflict(messages: DebateMessage[]): boolean {
+  const combined = messages.map((m) => m.content).join(" ");
   return CONFLICT_KEYWORDS.some((k) => combined.includes(k));
 }
 
@@ -77,18 +85,22 @@ function buildOfflineRoundConsensus(
   roundMessages: DebateMessage[],
   round: number,
 ): Omit<TimelineEvent, "id" | "createdAt"> {
-  const pro = roundMessages.find((m) => m.personaId === "pro");
-  const con = roundMessages.find((m) => m.personaId === "con");
-  const neutral = roundMessages.find((m) => m.personaId === "neutral");
+  const atlas = msgsForGenius("atlas", roundMessages)[0];
+  const cipher = msgsForGenius("cipher", roundMessages)[0];
+  const ember = msgsForGenius("ember", roundMessages)[0];
   const debateId = roundMessages[0]!.debateId;
-  const anchor = neutral ?? con ?? pro;
+  const anchor = ember ?? cipher ?? atlas;
 
-  const neutralBit = neutral
-    ? neutral.content.slice(0, 90)
-    : "양측 논점이 아직 정리 중";
-  const summary = pro && con
-    ? `찬성은 「${pro.content.slice(0, 40)}…」, 반대는 「${con.content.slice(0, 40)}…」 — 중립 정리: ${neutralBit}`
-    : `「${topic}」 라운드 ${round} 중간 정리: ${neutralBit}`;
+  const bits = [
+    atlas ? `아틀라스: ${atlas.content.slice(0, 50)}` : null,
+    cipher ? `사이퍼: ${cipher.content.slice(0, 50)}` : null,
+    ember ? `엠버: ${ember.content.slice(0, 50)}` : null,
+  ].filter(Boolean);
+
+  const summary =
+    bits.length > 0
+      ? `「${topic}」 라운드 ${round} — ${bits.join(" · ")}`
+      : `「${topic}」 라운드 ${round} 중간 정리`;
 
   return {
     debateId,
@@ -96,7 +108,7 @@ function buildOfflineRoundConsensus(
     title: `라운드 ${round} — 중간 합의안`,
     summary: summary.slice(0, 200),
     round,
-    messageId: anchor!.id,
+    messageId: (anchor ?? roundMessages[0])!.id,
   };
 }
 
@@ -107,9 +119,9 @@ function buildOfflineReport(
   endReason?: string | null,
 ): Omit<DebateReport, "debateId" | "generatedAt"> {
   const ctx = parseTopic(topic);
-  const proMsgs = messages.filter((m) => m.personaId === "pro");
-  const conMsgs = messages.filter((m) => m.personaId === "con");
-  const neutralMsgs = messages.filter((m) => m.personaId === "neutral");
+  const atlasMsgs = msgsForGenius("atlas", messages);
+  const cipherMsgs = msgsForGenius("cipher", messages);
+  const emberMsgs = msgsForGenius("ember", messages);
   const consensusFromTimeline = timeline
     .filter((e) => e.type === "consensus")
     .map((e) => e.summary);
@@ -141,22 +153,22 @@ function buildOfflineReport(
       ? `${sideA}와 ${sideB}`
       : ctx.displayTopic || topic;
 
-  const lastNeutral = neutralMsgs[neutralMsgs.length - 1]?.content;
+  const lastEmber = emberMsgs[emberMsgs.length - 1]?.content;
   const finalConclusion =
-    lastNeutral ??
+    lastEmber ??
     (sideA && sideB
-      ? `${sideA}와 ${sideB} 중 단일 정답은 없고, 취향·상황에 따라 선택이 갈린다.`
-      : `${topic}에 대해 찬반 논거가 교차했으나 아직 명확한 결론은 없다.`);
+      ? `${sideA}와 ${sideB}에 단일 정답은 없고, 시각에 따라 해석이 갈린다.`
+      : `${topic}에 대해 천재 3명이 각자 시각을 냈으나 아직 명확한 결론은 없다.`);
 
   return {
-    title: `${topic} — 토론 종합 보고서`,
-    executiveSummary: `총 ${messages.length}개 발언, 타임라인 ${timeline.length}건을 거치며 ${topicBrief}를 다뤘다. 찬반 양측이 각자 근거를 제시했고, 중립 AI가 균형을 정리했다.`,
+    title: `${topic} — 대화 종합 보고서`,
+    executiveSummary: `총 ${messages.length}개 발언, 타임라인 ${timeline.length}건을 거치며 ${topicBrief}를 다뤘다. 아틀라스·사이퍼·엠버가 각자 시각으로 대화했다.`,
     consensusPoints:
       consensusFromTimeline.length > 0
         ? consensusFromTimeline
-        : neutralMsgs.slice(-2).map((m) => m.content.slice(0, 120)),
-    proArguments: proMsgs.slice(-3).map((m) => m.content),
-    conArguments: conMsgs.slice(-3).map((m) => m.content),
+        : emberMsgs.slice(-2).map((m) => m.content.slice(0, 120)),
+    proArguments: atlasMsgs.slice(-3).map((m) => m.content),
+    conArguments: cipherMsgs.slice(-3).map((m) => m.content),
     unresolvedIssues:
       sideA && sideB
         ? [
@@ -189,14 +201,14 @@ export async function analyzeRoundForTimeline(
       debateId,
       type: "conflict",
       title: `라운드 ${round} — 격돌`,
-      summary: "찬성·반대 측의 핵심 주장이 정면으로 충돌했습니다.",
+      summary: "천재 3명의 핵심 주장이 정면으로 부딪혔습니다.",
       round,
       messageId: lastMessage.id,
     };
   }
 
   const historyText = roundMessages
-    .map((m) => `[${getPersona(m.personaId).name}] ${m.content}`)
+    .map((m) => `[${getPersona(normalizePersonaId(m.personaId)).name}] ${m.content}`)
     .join("\n");
 
   const llmResult = await callLLM(
@@ -204,8 +216,8 @@ export async function analyzeRoundForTimeline(
 라운드 ${round} 발언:
 ${historyText}
 
-위 라운드에서 찬성·반대·중립이 공통으로 인정할 수 있는 "중간 합의안" 또는 토론 전환점을 JSON으로 답하세요.
-없어도 중립이 정리한 절충안을 합의안으로 제시하세요.
+위 라운드에서 천재 3명이 공통으로 인정할 수 있는 "중간 합의안" 또는 대화 전환점을 JSON으로 답하세요.
+찬성/반대/중립 입장 분류는 쓰지 마세요.
 
 {"skip": false, "type": "consensus" 또는 "turning_point", "title": "짧은 제목", "summary": "1~2문장 합의안"}
 
@@ -247,7 +259,7 @@ export async function generateFinalReport(
   },
 ): Promise<Omit<DebateReport, "debateId" | "generatedAt">> {
   const historyText = messages
-    .map((m) => `[${getPersona(m.personaId).name}] ${m.content}`)
+    .map((m) => `[${getPersona(normalizePersonaId(m.personaId)).name}] ${m.content}`)
     .join("\n");
 
   const timelineText = timeline
@@ -263,13 +275,13 @@ ${historyText || "(없음)"}
 타임라인 합의/전환점:
 ${timelineText || "(없음)"}
 
-위 토론의 최종 보고서를 JSON으로 작성하세요. 주제(음식 비교, 찬반 등)에 맞는 구체적 내용만 쓰고, 정책·파일럿·점진적 도입 같은 일반론은 금지.
+위 대화의 최종 보고서를 JSON으로 작성하세요. 찬성/반대/중립 분류 없이 천재별 관점으로 정리하세요.
 {
   "title": "보고서 제목",
   "executiveSummary": "3~4문장 요약",
   "consensusPoints": ["합의점1", "합의점2"],
-  "proArguments": ["찬성 핵심 논거1", "찬성 핵심 논거2"],
-  "conArguments": ["반대 핵심 논거1", "반대 핵심 논거2"],
+  "proArguments": ["아틀라스(큰 그림) 핵심1", "아틀라스 핵심2"],
+  "conArguments": ["사이퍼(논리) 핵심1", "사이퍼 핵심2"],
   "unresolvedIssues": ["미해결 쟁점1"],
   "finalConclusion": "최종 결론 2~3문장",
   "recommendation": "실행 권고안 1~2문장"

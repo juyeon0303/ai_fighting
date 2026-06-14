@@ -36,7 +36,7 @@ export function personaProvider(
 ): ApiProvider {
   if (layout === "openai_only") return "openai";
   if (layout === "gemini_only") return "gemini";
-  if (personaId === "pro") return "openai";
+  if (personaId === "atlas") return "openai";
   return "gemini";
 }
 
