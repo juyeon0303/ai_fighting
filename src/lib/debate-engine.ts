@@ -33,6 +33,7 @@ export const debateEvents = new EventEmitter();
 debateEvents.setMaxListeners(100);
 
 const turnInflight = new Map<string, Promise<DebateMessage | null>>();
+const emptyTurnStreak = new Map<string, number>();
 const finalizing = new Set<string>();
 let workerStarted = false;
 let workerTimer: ReturnType<typeof setInterval> | null = null;
@@ -163,9 +164,19 @@ async function processDebateTurnInner(
     }
 
     if (!turn.content?.trim()) {
-      await endDebate(debateId, "empty_turn");
+      const streak = (emptyTurnStreak.get(debateId) ?? 0) + 1;
+      emptyTurnStreak.set(debateId, streak);
+      console.warn(
+        `[debate ${debateId}] empty/incomplete turn (${personaId}) — retry later (${streak}/5)`,
+      );
+      if (streak >= 5) {
+        emptyTurnStreak.delete(debateId);
+        await endDebate(debateId, "empty_turn");
+      }
       return null;
     }
+
+    emptyTurnStreak.delete(debateId);
 
     const latest = await getDebateMessages(debateId);
     if (latest.length !== messageCountAtStart) {

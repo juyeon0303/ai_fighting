@@ -257,13 +257,6 @@ export function getGeniusLens(
     ember: "비유·직관·실험적으로 풀어본다",
   }[personaId];
 
-  if (
-    (ctx.mode === "versus" || ctx.mode === "comparison") &&
-    ctx.sideA &&
-    ctx.sideB
-  ) {
-    return `${base} — ${ctx.sideA} vs ${ctx.sideB}`;
-  }
   return base;
 }
 

@@ -1,14 +1,18 @@
 import OpenAI from "openai";
 import type { DebateMessage, PersonaId } from "./types";
-import { buildDebatePrompt } from "./debate-content";
+import { buildDebatePrompt, buildDebateRetryHint } from "./debate-content";
 import type { PersonaLlmRuntime } from "./debate-llm-config";
 import { requestGeminiTurn } from "./gemini";
 import { personaDisplayName } from "./personas";
 import { parseTopic } from "./topic-context";
-import { clampTurnContent, maxOutputTokens } from "./debate-turn-budget";
+import {
+  clampTurnContent,
+  isIncompleteTurn,
+  maxOutputTokens,
+} from "./debate-turn-budget";
 
 const SYSTEM =
-  "세 명이 주제에 대해 순서대로 대화한다. 무난한 반말, 1~2문장.";
+  "세 명이 주제에 대해 순서대로 대화한다. 직전 말에 이어 깊이를 더한다. 무난한 반말, 완전한 문장 1~2개.";
 
 function systemForSpeaker(
   personaId: PersonaId,
@@ -51,6 +55,13 @@ function mapApiError(error: unknown): LlmStopReason {
   return null;
 }
 
+function normalizeTurn(raw: string | null, personaId: PersonaId): string {
+  if (!raw?.trim()) return "";
+  const clamped = clampTurnContent(raw, personaId);
+  if (isIncompleteTurn(clamped)) return "";
+  return clamped;
+}
+
 async function requestOpenAiTurn(
   client: OpenAI,
   model: string,
@@ -83,6 +94,31 @@ async function requestOpenAiTurn(
   }
 }
 
+async function callProviderTurn(
+  runtime: PersonaLlmRuntime,
+  system: string,
+  prompt: string,
+  personaId: PersonaId,
+): Promise<{ content: string | null; tokensUsed: number; stopReason: LlmStopReason }> {
+  if (runtime.provider === "gemini") {
+    return requestGeminiTurn(
+      runtime.apiKey!,
+      runtime.model,
+      system,
+      prompt,
+      maxOutputTokens(personaId),
+    );
+  }
+
+  return requestOpenAiTurn(
+    new OpenAI({ apiKey: runtime.apiKey }),
+    runtime.model,
+    system,
+    prompt,
+    personaId,
+  );
+}
+
 export async function generateDebateTurn(
   topic: string,
   personaId: PersonaId,
@@ -103,34 +139,38 @@ export async function generateDebateTurn(
     };
   }
 
-  const prompt = buildDebatePrompt(ctx, personaId, history, round, source);
   const system = systemForSpeaker(personaId, source);
+  let totalTokens = 0;
+  let lastStopReason: LlmStopReason = null;
 
-  const result =
-    runtime.provider === "gemini"
-      ? await requestGeminiTurn(
-          runtime.apiKey,
-          runtime.model,
-          system,
-          prompt,
-          maxOutputTokens(personaId),
-        )
-      : await requestOpenAiTurn(
-          new OpenAI({ apiKey: runtime.apiKey }),
-          runtime.model,
-          system,
-          prompt,
-          personaId,
-        );
+  const attempts = [
+    buildDebatePrompt(ctx, personaId, history, round, source),
+    `${buildDebatePrompt(ctx, personaId, history, round, source)}\n\n[다시] ${buildDebateRetryHint()}`,
+  ];
 
-  const content = result.content
-    ? clampTurnContent(result.content, personaId)
-    : "";
+  for (const prompt of attempts) {
+    const result = await callProviderTurn(runtime, system, prompt, personaId);
+    totalTokens += result.tokensUsed;
+    if (result.stopReason) {
+      lastStopReason = result.stopReason;
+      break;
+    }
+
+    const content = normalizeTurn(result.content, personaId);
+    if (content) {
+      return {
+        content,
+        tokensUsed: totalTokens,
+        source,
+        stopReason: null,
+      };
+    }
+  }
 
   return {
-    content,
-    tokensUsed: result.tokensUsed,
+    content: "",
+    tokensUsed: totalTokens,
     source,
-    stopReason: result.stopReason,
+    stopReason: lastStopReason,
   };
 }
