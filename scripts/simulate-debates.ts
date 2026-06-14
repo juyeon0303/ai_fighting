@@ -1,9 +1,9 @@
 /**
- * 토론 주제 파싱 + 프롬프트 구조 검증
+ * 토론 주제 파싱 + 멀티턴 프롬프트 구조 검증
  * 실행: npm run simulate
  */
 import { parseTopic, getModeLabel } from "../src/lib/topic-context";
-import { buildDebatePrompt } from "../src/lib/debate-content";
+import { buildGeminiContents } from "../src/lib/debate-content";
 import { DEBATE_TURN_ORDER } from "../src/lib/personas";
 import type { DebateMessage } from "../src/lib/types";
 
@@ -41,7 +41,7 @@ const TEST_TOPICS = [
 ];
 
 function main() {
-  console.log("\n=== 토론 시뮬레이션 (프롬프트 구조) ===\n");
+  console.log("\n=== 토론 시뮬레이션 (멀티턴 구조) ===\n");
   console.log(`테스트 주제: ${TEST_TOPICS.length}개\n`);
 
   let passed = 0;
@@ -53,21 +53,42 @@ function main() {
       const messages: DebateMessage[] = [];
 
       for (const personaId of DEBATE_TURN_ORDER) {
-        const prompt = buildDebatePrompt(ctx, personaId, messages, 1, "gemini");
-        if (!prompt.includes(ctx.topic)) {
-          throw new Error("prompt missing topic");
+        const contents = buildGeminiContents(
+          ctx.topic,
+          messages,
+          personaId,
+          "gemini",
+        );
+        if (!contents[0]?.text.includes(ctx.topic)) {
+          throw new Error("opening missing topic");
         }
-        if (prompt.length < 20) {
-          throw new Error("prompt too short");
+        const last = contents[contents.length - 1];
+        if (last.role !== "user") {
+          throw new Error("last turn must be user nudge");
+        }
+        if (contents.length < 1) {
+          throw new Error("contents empty");
         }
         messages.push({
           id: `sim-${personaId}`,
           debateId: "sim",
           personaId,
-          content: "테스트 발언",
+          content: "테스트 발언입니다.",
           round: 1,
           createdAt: new Date().toISOString(),
+          llmSource: "gemini",
         });
+      }
+
+      const fullRound = buildGeminiContents(
+        ctx.topic,
+        messages,
+        "atlas",
+        "gemini",
+      );
+      const modelTurns = fullRound.filter((c) => c.role === "model").length;
+      if (modelTurns !== 3) {
+        throw new Error(`expected 3 model turns, got ${modelTurns}`);
       }
 
       passed++;
@@ -84,9 +105,20 @@ function main() {
 
   if (failed > 0) process.exit(1);
 
-  const ctx = parseTopic("동양 vs 서양");
-  console.log("=== 샘플 프롬프트 (동양 vs 서양 / GE) ===\n");
-  console.log(buildDebatePrompt(ctx, "atlas", [], 1, "gemini"));
+  console.log("=== 샘플: 페이커 vs 쵸비 / 라운드2 GE ===\n");
+  const history: DebateMessage[] = DEBATE_TURN_ORDER.map((id, i) => ({
+    id: `h-${id}`,
+    debateId: "sim",
+    personaId: id,
+    content: `테스트 발언 ${i + 1}`,
+    round: 1,
+    createdAt: new Date().toISOString(),
+    llmSource: "gemini" as const,
+  }));
+  const sample = buildGeminiContents("페이커 vs 쵸비", history, "atlas", "gemini");
+  for (const c of sample) {
+    console.log(`[${c.role}] ${c.text.slice(0, 120)}${c.text.length > 120 ? "…" : ""}`);
+  }
 }
 
 main();

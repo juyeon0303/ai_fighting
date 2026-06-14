@@ -10,7 +10,9 @@ export { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_OPTIONS } from "./gemini-models";
 const GEMINI_BASE =
   "https://generativelanguage.googleapis.com/v1beta/models";
 
-const FETCH_TIMEOUT_MS = 20_000;
+const FETCH_TIMEOUT_MS = 45_000;
+
+export type GeminiContent = { role: "user" | "model"; text: string };
 
 export function isLikelyGeminiKey(key: string): boolean {
   const k = key.trim();
@@ -34,7 +36,6 @@ function modelCandidates(preferred: string): string[] {
 }
 
 function authModes(apiKey: string): Array<"header" | "query"> {
-  // Google 공식: x-goog-api-key 헤더만 사용. Bearer는 AQ./AIza 모두 거부될 수 있음.
   return ["header", "query"];
 }
 
@@ -43,9 +44,8 @@ function buildGenerationConfig(
   maxOutputTokens: number,
 ): Record<string, unknown> {
   const base = { maxOutputTokens };
-  // Gemini 3.x는 temperature 미권장 — 400 오류 방지
   if (!model.startsWith("gemini-3")) {
-    return { ...base, temperature: 0.9 };
+    return { ...base, temperature: 0.95 };
   }
   return base;
 }
@@ -97,12 +97,38 @@ async function callGeminiOnce(
   return { ok: true, status: res.status, data };
 }
 
-export async function requestGeminiTurn(
+function extractGeminiText(data: unknown): string | null {
+  const d = data as {
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> };
+    }>;
+    usageMetadata?: {
+      totalTokenCount?: number;
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+    };
+  };
+
+  return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? null;
+}
+
+function extractGeminiTokens(data: unknown): number {
+  const usage = (data as { usageMetadata?: Record<string, number> })
+    .usageMetadata;
+  if (!usage) return 0;
+  return (
+    usage.totalTokenCount ??
+    (usage.promptTokenCount ?? 0) + (usage.candidatesTokenCount ?? 0)
+  );
+}
+
+/** Gemini 앱 방식 — user/model 멀티턴 */
+export async function requestGeminiChat(
   apiKey: string,
   model: string,
   system: string,
-  user: string,
-  outputTokenLimit = 90,
+  contents: GeminiContent[],
+  outputTokenLimit = 1024,
 ): Promise<{
   content: string | null;
   tokensUsed: number;
@@ -113,11 +139,19 @@ export async function requestGeminiTurn(
   let sawAuthError = false;
   let sawQuotaError = false;
 
+  const apiContents = contents.map((c) => ({
+    role: c.role,
+    parts: [{ text: c.text }],
+  }));
+
   for (const candidateModel of modelCandidates(model)) {
     const body = {
       systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ text: user }] }],
-      generationConfig: buildGenerationConfig(candidateModel, outputTokenLimit),
+      contents: apiContents,
+      generationConfig: buildGenerationConfig(
+        candidateModel,
+        outputTokenLimit,
+      ),
     };
 
     for (const auth of authModes(apiKey)) {
@@ -142,24 +176,8 @@ export async function requestGeminiTurn(
           continue;
         }
 
-        const data = result.data as {
-          candidates?: Array<{
-            content?: { parts?: Array<{ text?: string }> };
-          }>;
-          usageMetadata?: {
-            totalTokenCount?: number;
-            promptTokenCount?: number;
-            candidatesTokenCount?: number;
-          };
-        };
-
-        const text =
-          data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? null;
-        const usage = data.usageMetadata;
-        const tokensUsed =
-          usage?.totalTokenCount ??
-          (usage?.promptTokenCount ?? 0) +
-            (usage?.candidatesTokenCount ?? 0);
+        const text = extractGeminiText(result.data);
+        const tokensUsed = extractGeminiTokens(result.data);
 
         if (text) {
           return { content: text, tokensUsed, stopReason: null };
@@ -191,4 +209,25 @@ export async function requestGeminiTurn(
 
   console.warn("[gemini] no usable response", lastError);
   return { content: null, tokensUsed: 0, stopReason: null };
+}
+
+/** 단일 user 메시지 (키 검증·분석용) */
+export async function requestGeminiTurn(
+  apiKey: string,
+  model: string,
+  system: string,
+  user: string,
+  outputTokenLimit = 90,
+): Promise<{
+  content: string | null;
+  tokensUsed: number;
+  stopReason: LlmStopReason;
+}> {
+  return requestGeminiChat(
+    apiKey,
+    model,
+    system,
+    [{ role: "user", text: user }],
+    outputTokenLimit,
+  );
 }
