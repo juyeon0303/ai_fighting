@@ -1,7 +1,7 @@
 import type { DebateMessage, PersonaId } from "./types";
 import type { DebateMode, TopicContext, TopicDomain } from "./topic-context";
 import { getPersonaStance } from "./topic-context";
-import { DEBATE_STYLE, DEBATE_BAD_EXAMPLES } from "./debate-style";
+import { DEBATE_STYLE, DEBATE_BAD_EXAMPLES, FRIEND_TONE_RULE } from "./debate-style";
 import { compactHistory } from "./debate-turn-budget";
 import type { DebateSources } from "./debate-sources";
 import { factCueForPrompt } from "./debate-sources";
@@ -9,6 +9,7 @@ import { FRESHNESS_RULE, pickNovelLens } from "./debate-novelty";
 import {
   acceptDebateTurn,
   bannedPhraseReminder,
+  isTooFormalForDebate,
   roundFocusAngle,
 } from "./debate-quality";
 
@@ -37,7 +38,6 @@ const BANNED_VAGUE = [
   "주제에서 벗어나지",
   "말해주세요",
   "하세요",
-  "솔직히",
   "말싸움",
   "싸운다",
   "참고로 위키",
@@ -56,10 +56,29 @@ const BANNED_VAGUE = [
   "대변한다",
   "상회한다",
   "마땅하다",
+  "이론적으로",
+  "논리적으로",
+  "정밀하게",
+  "충분히",
+  "전반적으로",
+  "찬성 쪽",
+  "반대 쪽",
+  "것으로 보",
+  "할 수 있",
+  "치부할",
 ];
 
-const FORMAL_PATTERN =
-  /습니다|입니다|됩니다|하십시오|해주세요|하세요|겠습니다|였습니다/;
+const BANNED_GENERIC = [
+  "사회적 비용",
+  "기회비용",
+  "역사적으로 혁신",
+  "적절한 규제와 함께",
+  "점진적 도입과 지속적 모니터링",
+];
+
+function hasBannedGeneric(text: string): boolean {
+  return [...BANNED_GENERIC, ...BANNED_VAGUE].some((b) => text.includes(b));
+}
 
 const DOMAIN_HINTS: Record<
   TopicDomain,
@@ -119,23 +138,6 @@ function hasAnchor(ctx: TopicContext, text: string): boolean {
   return ctx.anchors.some((a) => a.length >= 2 && text.includes(a));
 }
 
-const BANNED_GENERIC = [
-  "사회적 비용",
-  "기회비용",
-  "역사적으로 혁신",
-  "적절한 규제와 함께",
-  "점진적 도입과 지속적 모니터링",
-];
-
-function hasBannedGeneric(text: string): boolean {
-  return [...BANNED_GENERIC, ...BANNED_VAGUE].some((b) => text.includes(b));
-}
-
-function isTooFormal(text: string): boolean {
-  return FORMAL_PATTERN.test(text);
-}
-
-
 export interface ValidationResult {
   ok: boolean;
   issues: string[];
@@ -152,7 +154,7 @@ export function validateResponse(
     issues.push("generic_policy_phrase");
   }
 
-  if (isTooFormal(content)) {
+  if (isTooFormalForDebate(content)) {
     issues.push("formal_tone");
   }
 
@@ -253,15 +255,15 @@ function exampleLine(ctx: TopicContext): string {
           : ctx.domain === "social"
             ? "현실 조건"
             : "숨은 변수";
-    return `예:나는 ${ctx.sideA} 쪽인데 ${hint} 보면 지금 비교에선 설득력 있음.`;
+    return `예:난 ${ctx.sideA} 쪽인데 ${hint} 보면 지금은 이쪽이 더 맞는 것 같아.`;
   }
   const openers: Partial<Record<TopicDomain, string>> = {
-    food: "예:나는 찬성인데 혼밥·야식 상황에선 이게 더 낫다고 봄.",
-    tech: "예:나는 찬성인데 생산성 체감이 더 크다고 봄.",
-    social: "예:나는 찬성인데 일상에서 바로 이득이 있다고 봄.",
-    science: "예:나는 다세계 해석 기준으론 논리적으로 열릴 수 있다고 봄.",
+    food: "예:난 찬성인데 혼밥·야식이면 이게 더 낫다고 봐.",
+    tech: "예:난 찬성인데 써보면 생산성 체감이 더 크거든.",
+    social: "예:난 찬성인데 일상에서 바로 이득이 있어 보여.",
+    science: "예:난 다세계 해석 기준으론 열릴 여지는 있다고 봐.",
   };
-  return openers[ctx.domain] ?? "예:나는 이쪽인데 숨은 변수 하나 짚고 말할게.";
+  return openers[ctx.domain] ?? "예:난 이쪽인데 숨은 변수 하나 짚을게.";
 }
 
 export function buildDebatePrompt(
@@ -304,6 +306,7 @@ export function buildDebatePrompt(
     oppLine,
     rebuttalRule(personaId, round),
     DEBATE_STYLE,
+    FRIEND_TONE_RULE,
     FRESHNESS_RULE,
     `금지:${DEBATE_BAD_EXAMPLES}`,
     exampleLine(ctx),

@@ -60,6 +60,33 @@ function overlapRatio(a: string, b: string): number {
   return shared / wa.size;
 }
 
+const STIFF_FORMAL_MARKERS = [
+  "이론적으로",
+  "논리적으로",
+  "정밀하게",
+  "충분히",
+  "것으로 보",
+  "할 수 있",
+  "치부할",
+  "가능합니다",
+  "것입니다",
+  "찬성 쪽임",
+  "반대 쪽임",
+  "찬성 쪽",
+  "반대 쪽",
+  "전반적으로",
+  "관측 결과가",
+  "일치하는 걸 보면",
+];
+
+/** 해설·논문·격식체 */
+export function isTooFormalForDebate(text: string): boolean {
+  if (/습니다|입니다|됩니다|하십시오|겠습니다|였습니다|해요|세요/.test(text)) {
+    return true;
+  }
+  return STIFF_FORMAL_MARKERS.some((m) => text.includes(m));
+}
+
 /** 뉴스·해설 기사 톤 */
 export function isEssayTone(text: string): boolean {
   const hits = ESSAY_MARKERS.filter((m) => text.includes(m)).length;
@@ -202,6 +229,7 @@ export function acceptDebateTurn(
   ctx?: TopicContext,
 ): boolean {
   if (isEssayTone(content)) return false;
+  if (isTooFormalForDebate(content)) return false;
   if (isTooRepetitive(history, content, personaId)) return false;
   if (hasAwkwardSourceCitation(content)) return false;
   if (personaId === "neutral" && isNeutralSummaryTemplate(content)) {

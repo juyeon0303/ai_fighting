@@ -157,7 +157,7 @@ const REBUTTAL_REFUTES = [
 const QUOTE_REBUTTAL = [
   "앞서 '{quote}'라는 지적이 있었는데, {refute}",
   "상대가 말한 '{quote}' 부분은 {refute}",
-  "'{quote}'는 일리가 있지만 {refute}",
+  "'{quote}' 그건 인정하는데 {refute}",
 ];
 
 function seedFor(
@@ -346,7 +346,7 @@ function composeVersus(
         );
       }
     } else {
-      parts.push(`${a} 말도 일리 있는데 실전에서 고르면 ${b} 쪽이 더 낫다.`);
+      parts.push(`${a} 말도 맞는데 실전에서 고르면 ${b} 쪽이 더 낫다.`);
     }
     return parts.join(" ");
   }
@@ -433,7 +433,7 @@ function composeChoice(
 
   return [
     `「${t}」 정답 하나로 못 박기 어렵다. ${pickSeeded(h.neutral, i)}.`,
-    `${proPick}이랑 ${conPick} 둘 다 일리 있음.`,
+    `${proPick}이랑 ${conPick} 둘 다 말은 됨.`,
     fresh,
   ]
     .filter(Boolean)
@@ -470,7 +470,7 @@ function composeDual(
 
   if (personaId === "pro") {
     const parts = [
-      `${q} — 찬성 쪽임. ${pickSeeded(h.pro, i)}.`,
+      `난 찬성임. ${label} 보면 ${pickSeeded(h.pro, i)}.`,
       fresh,
     ].filter(Boolean) as string[];
     if (opp) {
@@ -488,7 +488,7 @@ function composeDual(
 
   if (personaId === "con") {
     const parts = [
-      `${q} — 반대 쪽임. ${pickSeeded(h.con, i)}.`,
+      `난 반대임. ${label}은 ${pickSeeded(h.con, i)}.`,
       fresh,
     ].filter(Boolean) as string[];
     if (opp) {
@@ -505,7 +505,7 @@ function composeDual(
   }
 
   return [
-    `${q} — 한쪽으로 못 박기 어렵다.`,
+    `${label}은 한쪽으로 못 박긴 어렵지.`,
     `찬성은 ${pickSeeded(h.pro, i)} 쪽, 반대는 ${pickSeeded(h.con, i)} 쪽.`,
     pickSeeded(h.neutral, seed),
     fresh,

@@ -20,7 +20,7 @@ import {
 } from "./debate-turn-budget";
 
 const SYSTEM =
-  "한국어 토론. 친구 말투. 1~2문장 끝까지 완성. 팩트는 자연스럽게. 위키·자료 인용 금지. 중립은 한쪽 편 금지.";
+  "찬반중립은 친한 친구. 무난한 반말로 1~2문장 끝까지 말해. 해요체·논문체 금지. 욕설·ㅋㅋ 금지. 중립은 한쪽 편 금지.";
 
 export type LlmStopReason = "auth" | "quota" | null;
 

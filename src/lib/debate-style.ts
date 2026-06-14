@@ -1,3 +1,8 @@
-export const DEBATE_STYLE = `말투: 친구한테 말하듯(나는~봄/임). 1~2문장. 팩트는 자연스럽게 녹임. 위키·자료 인용 금지.`;
+/** 친한 친구들이 무난하게 토론하는 톤 */
+export const FRIEND_TONE_RULE =
+  "찬반중립=친한친구.무난한반말(나는/난~봄·임·거든·같아).해요체·존댓말·논문체금지.욕설·ㅋㅋ·과장금지.";
 
-export const DEBATE_BAD_EXAMPLES = `압도적/유일무이/입증/견인/정교한지표/찬성OO는…반면…`;
+export const DEBATE_STYLE = `말투: 술자리에서 친구끼리 말하듯. 1~2문장. 짧고 편하게. 팩트는 자연스럽게.`;
+
+export const DEBATE_BAD_EXAMPLES =
+  "압도적/이론적으로/논리적으로/정밀하게/찬성쪽임/반대쪽임/것으로보입니다/할수있습니다/전반적으로";

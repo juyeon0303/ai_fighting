@@ -69,10 +69,21 @@ export function clampTurnContent(content: string, personaId: PersonaId): string 
 /** 격식체를 평서체로 가볍게 정리 — 재호출 없이 품질 보정 */
 export function softenFormalTone(text: string): string {
   return text
-    .replace(/습니다/g, "다")
-    .replace(/입니다/g, "다")
-    .replace(/됩니다/g, "된다")
-    .replace(/겠습니다/g, "겠다")
+    .replace(/습니다/g, "음")
+    .replace(/입니다/g, "임")
+    .replace(/됩니다/g, "됨")
+    .replace(/겠습니다/g, "겠음")
+    .replace(/였습니다/g, "였음")
+    .replace(/할 수 있습니다/g, "할 수 있음")
+    .replace(/할 수 있어요/g, "할 수 있음")
+    .replace(/가능합니다/g, "가능함")
+    .replace(/것입니다/g, "거임")
+    .replace(/것으로 보입니다/g, "것 같음")
+    .replace(/것으로 보여요/g, "것 같음")
+    .replace(/이론적으로/g, "이론상")
+    .replace(/논리적으로/g, "논리만 보면")
+    .replace(/찬성 쪽임/g, "찬성임")
+    .replace(/반대 쪽임/g, "반대임")
     .replace(/해주세요|하십시오|하세요/g, "")
     .replace(/\s+/g, " ")
     .trim();
