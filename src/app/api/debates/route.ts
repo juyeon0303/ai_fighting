@@ -6,7 +6,6 @@ import {
   validateUserApiInput,
 } from "@/lib/debate-llm-config";
 import type { UserApiInput } from "@/lib/debate-llm-config";
-import { prefetchWikiContext } from "@/lib/wiki-context";
 import type { ApiLayout } from "@/lib/types";
 import { normalizeGeminiModel } from "@/lib/gemini-models";
 import { DEFAULT_TURN_INTERVAL_MS } from "@/lib/personas";
@@ -26,34 +25,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "주제를 입력해주세요." }, { status: 400 });
   }
 
-  let userApi: UserApiInput | undefined;
-  if (body.userApi) {
-    const input: UserApiInput = {
-      layout: (body.userApi.layout as ApiLayout) ?? "openai_only",
-      openaiKey: body.userApi.openaiKey?.trim(),
-      geminiKey: body.userApi.geminiKey?.trim(),
-      openaiModel: normalizeOpenaiModel(body.userApi.openaiModel),
-      geminiModel: normalizeGeminiModel(body.userApi.geminiModel),
-      maxTokenBudget: body.userApi.maxTokenBudget,
-    };
-    const validationError = validateUserApiInput(input);
-    if (validationError) {
-      return NextResponse.json({ error: validationError }, { status: 400 });
-    }
-    const verifyError = await verifyUserApiKeys(input);
-    if (verifyError) {
-      return NextResponse.json({ error: verifyError }, { status: 400 });
-    }
-    userApi = input;
+  if (!body.userApi) {
+    return NextResponse.json(
+      { error: "Gemini 또는 GPT API 키가 필요합니다." },
+      { status: 400 },
+    );
   }
+
+  const input: UserApiInput = {
+    layout: (body.userApi.layout as ApiLayout) ?? "gemini_only",
+    openaiKey: body.userApi.openaiKey?.trim(),
+    geminiKey: body.userApi.geminiKey?.trim(),
+    openaiModel: normalizeOpenaiModel(body.userApi.openaiModel),
+    geminiModel: normalizeGeminiModel(body.userApi.geminiModel),
+    maxTokenBudget: body.userApi.maxTokenBudget,
+  };
+  const validationError = validateUserApiInput(input);
+  if (validationError) {
+    return NextResponse.json({ error: validationError }, { status: 400 });
+  }
+  const verifyError = await verifyUserApiKeys(input);
+  if (verifyError) {
+    return NextResponse.json({ error: verifyError }, { status: 400 });
+  }
+  const userApi = input;
 
   const debate = await createDebate(topic, {
     maxRounds: body.maxRounds ?? 20,
     turnIntervalMs: body.turnIntervalMs ?? DEFAULT_TURN_INTERVAL_MS,
     userApi,
   });
-
-  prefetchWikiContext(topic.trim());
 
   kickstartDebate(debate.id).catch((err) =>
     console.error(`[debates] kickstart ${debate.id}:`, err),

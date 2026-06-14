@@ -10,31 +10,30 @@ import { estimateTokenBudget } from "@/lib/token-budget-guide";
 import { isLikelyGeminiKey } from "@/lib/gemini";
 import { GEMINI_MODEL_OPTIONS } from "@/lib/gemini-models";
 import { OPENAI_MODEL_OPTIONS } from "@/lib/openai-models";
+import { personaDisplayName, personaNamesLabel } from "@/lib/personas";
 
 const OPENAI_KEYS_URL = "https://platform.openai.com/api-keys";
 const GEMINI_KEYS_URL = "https://aistudio.google.com/apikey";
 
-type LlmMode = "free" | "user_api";
+type LlmMode = "user_api";
 
 const LAYOUT_OPTIONS: Array<{
   id: ApiLayout;
   title: string;
   desc: string;
 }> = [
-  { id: "openai_only", title: "GPT만", desc: "OpenAI 키 1개" },
-  { id: "gemini_only", title: "Gemini만", desc: "Gemini 키 1개 · 토큰 넉넉" },
+  { id: "gemini_only", title: "Gemini 3명", desc: "Gemini 키 1개 · 추천" },
+  { id: "openai_only", title: "GPT 3명", desc: "OpenAI 키 1개" },
   {
     id: "gpt_vs_gemini",
     title: "GPT vs Gemini",
-    desc: "두 AI가 서로 토론",
+    desc: "두 AI가 교차 토론",
   },
 ];
 
 const BUDGET_PRESETS = [10_000, 30_000, 100_000, 500_000];
 
 interface ApiKeySetupPanelProps {
-  mode: LlmMode;
-  onModeChange: (mode: LlmMode) => void;
   layout: ApiLayout;
   onLayoutChange: (layout: ApiLayout) => void;
   openaiKey: string;
@@ -132,8 +131,6 @@ function KeyField({
 }
 
 export function ApiKeySetupPanel({
-  mode,
-  onModeChange,
   layout,
   onLayoutChange,
   openaiKey,
@@ -161,35 +158,7 @@ export function ApiKeySetupPanel({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => onModeChange("free")}
-          className={`rounded-xl border px-4 py-3 text-left transition ${
-            mode === "free"
-              ? "border-violet-500/50 bg-violet-500/15 text-white"
-              : "border-white/10 bg-white/3 text-white/55 hover:border-white/20"
-          }`}
-        >
-          <p className="text-sm font-semibold">무료 엔진</p>
-          <p className="mt-0.5 text-xs opacity-70">API 키 없음 · 0원</p>
-        </button>
-        <button
-          type="button"
-          onClick={() => onModeChange("user_api")}
-          className={`rounded-xl border px-4 py-3 text-left transition ${
-            mode === "user_api"
-              ? "border-emerald-500/50 bg-emerald-500/15 text-white"
-              : "border-white/10 bg-white/3 text-white/55 hover:border-white/20"
-          }`}
-        >
-          <p className="text-sm font-semibold">내 API 키</p>
-          <p className="mt-0.5 text-xs opacity-70">GPT · Gemini · 교차 토론</p>
-        </button>
-      </div>
-
-      {mode === "user_api" && (
-        <div className="space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+      <div className="space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium text-emerald-200/90">
               API 키 · 모델 설정
@@ -223,8 +192,10 @@ export function ApiKeySetupPanel({
 
           {layout === "gpt_vs_gemini" && (
             <div className="rounded-xl border border-violet-500/20 bg-violet-500/8 px-3 py-2 text-xs text-white/60">
-              <span className="text-violet-300">GPT</span>: 아틀라스 ·{" "}
-              <span className="text-blue-300">Gemini</span>: 사이퍼·엠버 — 서로
+              <span className="text-violet-300">GPT</span>: {personaDisplayName("atlas", "openai")} ·{" "}
+              <span className="text-blue-300">Gemini</span>:{" "}
+              {personaDisplayName("cipher", "gemini")}·
+              {personaDisplayName("ember", "gemini")} — 서로
               다른 AI가 맞붙습니다
             </div>
           )}
@@ -422,13 +393,11 @@ export function ApiKeySetupPanel({
             저장됩니다. 예산 초과·API 한도 소진 시 토론이 자동 종료됩니다.
           </p>
         </div>
-      )}
     </div>
   );
 }
 
 export function settingsFromPanel(
-  mode: LlmMode,
   layout: ApiLayout,
   openaiKey: string,
   geminiKey: string,
@@ -437,7 +406,7 @@ export function settingsFromPanel(
   maxTokenBudget: number,
   rememberKey: boolean,
 ): SavedApiSettings | null {
-  if (mode !== "user_api" || !rememberKey) return null;
+  if (!rememberKey) return null;
   return {
     enabled: true,
     layout,

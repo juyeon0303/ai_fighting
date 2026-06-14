@@ -11,8 +11,9 @@ import type {
 import { parseTopic, getModeLabel } from "@/lib/topic-context";
 import {
   DEBATE_TURN_ORDER,
-  PERSONAS,
+  PERSONA_META,
   geniusLens,
+  personaDisplayName,
   normalizePersonaId,
 } from "@/lib/personas";
 import {
@@ -286,22 +287,10 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                             ? "API 키 복호화 실패 — 토론 삭제 후 새로 만들기"
                             : apiConnectionIssue === "key_missing"
                               ? "API 키 없음 — 새 토론에서 키 다시 입력"
-                              : "Gemini/GPT 연결 안 됨 → 무료 엔진"}
-                        </span>
-                      )}
-                      {tokensUsed > 0 && sourceStats.engine > 0 && (
-                        <span className="text-amber-400/90">
-                          {" "}
-                          · 일부 발언은 API 거절 후 엔진 대체
+                              : "API 응답 대기 중"}
                         </span>
                       )}
                     </span>
-                  </>
-                )}
-                {llmMode === "free" && (
-                  <>
-                    <span>·</span>
-                    <span>무료 엔진</span>
                   </>
                 )}
                 {endReason && (
@@ -365,20 +354,25 @@ export function DebateArena({ debateId }: DebateArenaProps) {
 
           <div className="mt-3 flex flex-wrap gap-2">
             {DEBATE_TURN_ORDER.map((id) => {
-              const p = PERSONAS[id];
+              const meta = PERSONA_META[id];
+              const provider =
+                llmMode === "user_api" && apiLayout
+                  ? personaProvider(apiLayout, id)
+                  : "gemini";
+              const name = personaDisplayName(id, provider);
               const isActive = lastPersonaId === id && status === "active";
-              const label = `${p.name} · ${geniusLens(id)}`;
+              const label = `${name} · ${geniusLens(id)}`;
               const providerBadge =
                 llmMode === "user_api" && apiLayout
-                  ? providerLabel(personaProvider(apiLayout, id))
+                  ? providerLabel(provider)
                   : null;
               return (
                 <div
                   key={id}
                   className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition ${isActive ? "bg-white/10 ring-1 ring-white/20" : "opacity-40"}`}
-                  style={isActive ? { color: p.color } : undefined}
+                  style={isActive ? { color: meta.color } : undefined}
                 >
-                  {p.emoji} {label}
+                  {meta.emoji} {label}
                   {providerBadge && (
                     <span className="rounded bg-white/10 px-1 text-[9px] text-white/50">
                       {providerBadge}
@@ -420,6 +414,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
         reportStatus={reportStatus}
         visible={showReport}
         onClose={() => setShowReport(false)}
+        apiLayout={apiLayout}
       />
     </div>
   );

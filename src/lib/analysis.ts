@@ -1,13 +1,29 @@
 import OpenAI from "openai";
-import type { DebateMessage, DebateReport, TimelineEvent } from "./types";
-import { getPersona, normalizePersonaId, TURNS_PER_ROUND } from "./personas";
+import type { ApiProvider, DebateMessage, DebateReport, TimelineEvent } from "./types";
+import { DEBATE_TURN_ORDER, normalizePersonaId, personaDisplayName, providerFromMessageSource, TURNS_PER_ROUND } from "./personas";
 import { parseTopic } from "./topic-context";
 import { DEFAULT_OPENAI_MODEL } from "./openai-models";
 import { DEFAULT_GEMINI_MODEL } from "./gemini-models";
 import { requestGeminiTurn } from "./gemini";
-import type { ApiProvider } from "./types";
 
 const CONFLICT_KEYWORDS = ["반박", "틀렸", "동의할 수 없", "문제", "위험", "우려"];
+
+function speakerLabel(m: DebateMessage): string {
+  return personaDisplayName(
+    normalizePersonaId(m.personaId),
+    providerFromMessageSource(m.llmSource),
+  );
+}
+
+function namesSummary(messages: DebateMessage[]): string {
+  return DEBATE_TURN_ORDER.map((id) => {
+    const msg = messages.find((m) => normalizePersonaId(m.personaId) === id);
+    const provider: ApiProvider = msg
+      ? providerFromMessageSource(msg.llmSource)
+      : "gemini";
+    return personaDisplayName(id, provider);
+  }).join("·");
+}
 
 function getRoundMessages(messages: DebateMessage[], round: number): DebateMessage[] {
   return messages.filter((m) => m.round === round);
@@ -92,9 +108,9 @@ function buildOfflineRoundConsensus(
   const anchor = ember ?? cipher ?? atlas;
 
   const bits = [
-    atlas ? `아틀라스: ${atlas.content.slice(0, 50)}` : null,
-    cipher ? `사이퍼: ${cipher.content.slice(0, 50)}` : null,
-    ember ? `엠버: ${ember.content.slice(0, 50)}` : null,
+    atlas ? `${speakerLabel(atlas)}: ${atlas.content.slice(0, 50)}` : null,
+    cipher ? `${speakerLabel(cipher)}: ${cipher.content.slice(0, 50)}` : null,
+    ember ? `${speakerLabel(ember)}: ${ember.content.slice(0, 50)}` : null,
   ].filter(Boolean);
 
   const summary =
@@ -162,7 +178,7 @@ function buildOfflineReport(
 
   return {
     title: `${topic} — 대화 종합 보고서`,
-    executiveSummary: `총 ${messages.length}개 발언, 타임라인 ${timeline.length}건을 거치며 ${topicBrief}를 다뤘다. 아틀라스·사이퍼·엠버가 각자 시각으로 대화했다.`,
+    executiveSummary: `총 ${messages.length}개 발언, 타임라인 ${timeline.length}건을 거치며 ${topicBrief}를 다뤘다. ${namesSummary(messages)}가 각자 시각으로 대화했다.`,
     consensusPoints:
       consensusFromTimeline.length > 0
         ? consensusFromTimeline
@@ -208,7 +224,7 @@ export async function analyzeRoundForTimeline(
   }
 
   const historyText = roundMessages
-    .map((m) => `[${getPersona(normalizePersonaId(m.personaId)).name}] ${m.content}`)
+    .map((m) => `[${speakerLabel(m)}] ${m.content}`)
     .join("\n");
 
   const llmResult = await callLLM(
@@ -259,8 +275,21 @@ export async function generateFinalReport(
   },
 ): Promise<Omit<DebateReport, "debateId" | "generatedAt">> {
   const historyText = messages
-    .map((m) => `[${getPersona(normalizePersonaId(m.personaId)).name}] ${m.content}`)
+    .map((m) => `[${speakerLabel(m)}] ${m.content}`)
     .join("\n");
+
+  const atlasName = personaDisplayName(
+    "atlas",
+    providerFromMessageSource(
+      messages.find((m) => normalizePersonaId(m.personaId) === "atlas")?.llmSource,
+    ),
+  );
+  const cipherName = personaDisplayName(
+    "cipher",
+    providerFromMessageSource(
+      messages.find((m) => normalizePersonaId(m.personaId) === "cipher")?.llmSource,
+    ),
+  );
 
   const timelineText = timeline
     .map((e) => `- [${e.type}] ${e.title}: ${e.summary}`)
@@ -280,8 +309,8 @@ ${timelineText || "(없음)"}
   "title": "보고서 제목",
   "executiveSummary": "3~4문장 요약",
   "consensusPoints": ["합의점1", "합의점2"],
-  "proArguments": ["아틀라스(큰 그림) 핵심1", "아틀라스 핵심2"],
-  "conArguments": ["사이퍼(논리) 핵심1", "사이퍼 핵심2"],
+  "proArguments": ["${atlasName}(큰 그림) 핵심1", "${atlasName} 핵심2"],
+  "conArguments": ["${cipherName}(논리) 핵심1", "${cipherName} 핵심2"],
   "unresolvedIssues": ["미해결 쟁점1"],
   "finalConclusion": "최종 결론 2~3문장",
   "recommendation": "실행 권고안 1~2문장"

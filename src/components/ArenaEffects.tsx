@@ -1,6 +1,6 @@
 "use client";
 
-import { PERSONAS, normalizePersonaId } from "@/lib/personas";
+import { PERSONA_META, normalizePersonaId } from "@/lib/personas";
 
 interface ArenaEffectsProps {
   lastPersonaId: string | null;
@@ -14,7 +14,7 @@ export function ArenaEffects({
   isClash,
 }: ArenaEffectsProps) {
   const color = lastPersonaId
-    ? PERSONAS[normalizePersonaId(lastPersonaId)].color
+    ? PERSONA_META[normalizePersonaId(lastPersonaId)].color
     : "#8b5cf6";
 
   return (

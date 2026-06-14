@@ -8,12 +8,12 @@ export type ApiConnectionIssue =
   | "key_missing"
   | null;
 
-export type LlmMode = "free" | "user_api";
+export type LlmMode = "user_api";
 export type ApiProvider = "openai" | "gemini";
 
 export interface PersonaLlmRuntime {
   mode: LlmMode;
-  provider: ApiProvider | "engine";
+  provider: ApiProvider;
   apiKey?: string;
   model: string;
   maxTokenBudget: number | null;
@@ -28,7 +28,6 @@ export interface UserApiInput {
   geminiModel?: string;
   maxTokenBudget?: number;
 }
-
 
 export function personaProvider(
   layout: ApiLayout,
@@ -59,28 +58,26 @@ export function providerLabel(provider: ApiProvider): string {
 export function layoutLabel(layout: ApiLayout | null): string {
   if (layout === "gemini_only") return "Gemini";
   if (layout === "gpt_vs_gemini") return "GPT vs Gemini";
-  if (layout === "openai_only") return "GPT";
-  return "무료";
+  return "GPT";
 }
 
 export function resolveApiLayout(debate: Debate): ApiLayout | null {
   if (debate.apiLayout) return debate.apiLayout;
-  if (debate.llmMode !== "user_api") return null;
+  if (debate.encryptedGeminiKey && !debate.encryptedApiKey) {
+    return "gemini_only";
+  }
+  if (debate.encryptedApiKey && !debate.encryptedGeminiKey) {
+    return "openai_only";
+  }
   if (debate.encryptedApiKey && debate.encryptedGeminiKey) {
     return "gpt_vs_gemini";
   }
-  if (debate.apiProvider === "gemini" || debate.encryptedGeminiKey) {
-    return "gemini_only";
-  }
-  if (debate.apiProvider === "openai" || debate.encryptedApiKey) {
-    return "openai_only";
-  }
-  return "openai_only";
+  if (debate.apiProvider === "gemini") return "gemini_only";
+  if (debate.apiProvider === "openai") return "openai_only";
+  return null;
 }
 
 export function resolveUserApiConnectionIssue(debate: Debate): ApiConnectionIssue {
-  if (debate.llmMode !== "user_api") return null;
-
   const layout = resolveApiLayout(debate);
   if (!layout) return "key_missing";
 
@@ -104,45 +101,27 @@ export function resolvePersonaLlmRuntime(
   personaId: PersonaId,
 ): PersonaLlmRuntime {
   const base = {
-    maxTokenBudget:
-      debate.llmMode === "user_api" ? debate.maxTokenBudget : null,
+    maxTokenBudget: debate.maxTokenBudget,
     tokensUsed: debate.tokensUsed,
   };
 
   const layout = resolveApiLayout(debate);
-  if (debate.llmMode !== "user_api" || !layout) {
+  if (!layout) {
     return {
-      mode: "free",
-      provider: "engine",
-      model: DEFAULT_OPENAI_MODEL,
+      mode: "user_api",
+      provider: "gemini",
+      model: DEFAULT_GEMINI_MODEL,
       ...base,
     };
   }
 
   const provider = personaProvider(layout, personaId);
   const model = personaModel(debate, provider);
-
   const encrypted =
     provider === "gemini"
       ? debate.encryptedGeminiKey
       : debate.encryptedApiKey;
-
-  const apiKey = encrypted ? decryptApiKey(encrypted) : null;
-
-  if (encrypted && !apiKey) {
-    console.warn(
-      `[llm] ${provider} key decrypt failed for debate ${debate.id} — engine fallback`,
-    );
-  }
-
-  if (!apiKey) {
-    return {
-      mode: "free",
-      provider: "engine",
-      model,
-      ...base,
-    };
-  }
+  const apiKey = encrypted ? decryptApiKey(encrypted) ?? undefined : undefined;
 
   return {
     mode: "user_api",
@@ -153,21 +132,13 @@ export function resolvePersonaLlmRuntime(
   };
 }
 
-/** @deprecated resolvePersonaLlmRuntime(debate, personaId) 사용 */
-export function resolveDebateLlmRuntime(
-  debate: Debate,
-  personaId: PersonaId,
-): PersonaLlmRuntime {
-  return resolvePersonaLlmRuntime(debate, personaId);
-}
-
 export function resolveDebateAnalysisOptions(debate: Debate): {
   apiKey?: string;
   model: string;
   provider: ApiProvider;
 } | null {
   const layout = resolveApiLayout(debate);
-  if (debate.llmMode !== "user_api" || !layout) return null;
+  if (!layout) return null;
 
   if (layout === "gemini_only" || layout === "gpt_vs_gemini") {
     const key = debate.encryptedGeminiKey
@@ -197,7 +168,6 @@ export function resolveDebateAnalysisOptions(debate: Debate): {
 }
 
 export function isTokenBudgetExceeded(debate: Debate): boolean {
-  if (debate.llmMode !== "user_api") return false;
   if (debate.maxTokenBudget <= 0) return false;
   return debate.tokensUsed >= debate.maxTokenBudget;
 }

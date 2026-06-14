@@ -1,7 +1,7 @@
 "use client";
 
 import type { DebateMessage } from "@/lib/types";
-import { getPersona, normalizePersonaId } from "@/lib/personas";
+import { getPersona, normalizePersonaId, PERSONA_META, providerFromMessageSource } from "@/lib/personas";
 
 const SPARK_KEYWORDS = ["반박", "틀렸", "아닌데", "그건", "근데", "다르게"];
 
@@ -18,8 +18,9 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message, prevMessage, isNew }: MessageBubbleProps) {
-  const persona = getPersona(normalizePersonaId(message.personaId));
   const pid = normalizePersonaId(message.personaId);
+  const provider = providerFromMessageSource(message.llmSource);
+  const persona = getPersona(pid, provider);
   const spark = isSparkMessage(message, prevMessage);
   const slideFrom =
     pid === "atlas"
@@ -91,7 +92,7 @@ interface TypingIndicatorProps {
 
 export function TypingIndicator({ personaId }: TypingIndicatorProps) {
   const color = personaId
-    ? getPersona(normalizePersonaId(personaId)).color
+    ? PERSONA_META[normalizePersonaId(personaId)].color
     : "#8b5cf6";
 
   return (

@@ -34,7 +34,7 @@ export function loadApiSettings(): SavedApiSettings | null {
     if (!parsed.enabled) return null;
     return {
       enabled: true,
-      layout: parsed.layout ?? "openai_only",
+      layout: parsed.layout ?? "gemini_only",
       openaiKey: parsed.openaiKey ?? parsed.apiKey ?? "",
       geminiKey: parsed.geminiKey ?? "",
       openaiModel: normalizeOpenaiModel(

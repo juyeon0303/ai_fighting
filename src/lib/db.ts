@@ -256,49 +256,36 @@ export async function createDebate(
   const now = new Date().toISOString();
   const sb = getSupabase();
   const userApi = options?.userApi;
-  const hasUserApi = !!userApi && !validateUserApiInput(userApi);
-  const maxTokenBudget = hasUserApi
-    ? Math.max(1_000, userApi!.maxTokenBudget ?? 30_000)
-    : 0;
+  if (!userApi || validateUserApiInput(userApi)) {
+    throw new Error("API 키 설정이 필요합니다.");
+  }
 
-  const layout = userApi?.layout ?? "openai_only";
-  const openaiModel = normalizeOpenaiModel(userApi?.openaiModel);
-  const geminiModel = normalizeGeminiModel(userApi?.geminiModel);
+  const maxTokenBudget = Math.max(1_000, userApi.maxTokenBudget ?? 30_000);
+  const layout = userApi.layout ?? "gemini_only";
+  const openaiModel = normalizeOpenaiModel(userApi.openaiModel);
+  const geminiModel = normalizeGeminiModel(userApi.geminiModel);
 
-  const llmFields = hasUserApi
-    ? {
-        llm_mode: "user_api" as const,
-        api_layout: layout,
-        api_provider:
-          layout === "gemini_only"
-            ? ("gemini" as const)
-            : layout === "openai_only"
-              ? ("openai" as const)
-              : null,
-        api_model: openaiModel,
-        openai_model: openaiModel,
-        gemini_model: geminiModel,
-        encrypted_api_key: userApi!.openaiKey?.trim()
-          ? encryptApiKey(userApi!.openaiKey.trim())
+  const llmFields = {
+    llm_mode: "user_api" as const,
+    api_layout: layout,
+    api_provider:
+      layout === "gemini_only"
+        ? ("gemini" as const)
+        : layout === "openai_only"
+          ? ("openai" as const)
           : null,
-        encrypted_gemini_key: userApi!.geminiKey?.trim()
-          ? encryptApiKey(userApi!.geminiKey.trim())
-          : null,
-        max_token_budget: maxTokenBudget,
-        tokens_used: 0,
-      }
-    : {
-        llm_mode: "free" as const,
-        api_layout: null,
-        api_provider: null,
-        api_model: null,
-        openai_model: null,
-        gemini_model: null,
-        encrypted_api_key: null,
-        encrypted_gemini_key: null,
-        max_token_budget: 0,
-        tokens_used: 0,
-      };
+    api_model: openaiModel,
+    openai_model: openaiModel,
+    gemini_model: geminiModel,
+    encrypted_api_key: userApi.openaiKey?.trim()
+      ? encryptApiKey(userApi.openaiKey.trim())
+      : null,
+    encrypted_gemini_key: userApi.geminiKey?.trim()
+      ? encryptApiKey(userApi.geminiKey.trim())
+      : null,
+    max_token_budget: maxTokenBudget,
+    tokens_used: 0,
+  };
 
   if (sb) {
     const { data, error } = await sb
@@ -331,22 +318,21 @@ export async function createDebate(
     turnIntervalMs: options?.turnIntervalMs ?? DEFAULT_TURN_INTERVAL_MS,
     lastTurnAt: null,
     reportStatus: "none",
-    llmMode: hasUserApi ? "user_api" : "free",
-    apiLayout: hasUserApi ? layout : null,
-    apiProvider: hasUserApi
-      ? layout === "gemini_only"
+    llmMode: "user_api",
+    apiLayout: layout,
+    apiProvider:
+      layout === "gemini_only"
         ? "gemini"
         : layout === "openai_only"
           ? "openai"
-          : null
-      : null,
-    apiModel: hasUserApi ? openaiModel : null,
-    openaiModel: hasUserApi ? openaiModel : null,
-    geminiModel: hasUserApi ? geminiModel : null,
-    encryptedApiKey: userApi?.openaiKey?.trim()
+          : null,
+    apiModel: openaiModel,
+    openaiModel,
+    geminiModel,
+    encryptedApiKey: userApi.openaiKey?.trim()
       ? encryptApiKey(userApi.openaiKey.trim())
       : null,
-    encryptedGeminiKey: userApi?.geminiKey?.trim()
+    encryptedGeminiKey: userApi.geminiKey?.trim()
       ? encryptApiKey(userApi.geminiKey.trim())
       : null,
     maxTokenBudget,

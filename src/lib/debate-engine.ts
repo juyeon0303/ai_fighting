@@ -20,7 +20,7 @@ import {
   resolveDebateAnalysisOptions,
   resolvePersonaLlmRuntime,
 } from "./debate-llm-config";
-import { generateDebateTurn, generateEngineTurn } from "./llm";
+import { generateDebateTurn } from "./llm";
 import {
   effectiveTurnIntervalMs,
   getNextPersona,
@@ -140,7 +140,7 @@ async function processDebateTurnInner(
 
     const personaId = getNextPersona(round, messageCountAtStart);
     const runtime = resolvePersonaLlmRuntime(debate, personaId);
-    let turn = await generateDebateTurn(
+    const turn = await generateDebateTurn(
       debate.topic,
       personaId,
       messages,
@@ -149,20 +149,17 @@ async function processDebateTurnInner(
       runtime,
     );
 
-    if (!turn.content?.trim()) {
-      turn = await generateEngineTurn(
-        debate.topic,
-        personaId,
-        messages,
-        round,
-        debateId,
-      );
+    if (turn.stopReason === "auth") {
+      await endDebate(debateId, "invalid_api_key");
+      return null;
     }
-
-    if (turn.source === "engine" && debate.llmMode === "user_api") {
-      console.warn(
-        `[debate ${debateId}] API unavailable — engine fallback (${personaId})`,
-      );
+    if (turn.stopReason === "quota") {
+      await endDebate(debateId, "api_quota");
+      return null;
+    }
+    if (turn.stopReason === "missing_key") {
+      await endDebate(debateId, "invalid_api_key");
+      return null;
     }
 
     if (!turn.content?.trim()) {

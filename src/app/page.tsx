@@ -1,5 +1,6 @@
 import { TopicForm } from "@/components/TopicForm";
 import { DebateList } from "@/components/DebateList";
+import { personaNamesLabel } from "@/lib/personas";
 
 export default function Home() {
   return (
@@ -21,7 +22,7 @@ export default function Home() {
             </span>
           </h1>
           <p className="mx-auto max-w-lg text-white/50">
-            천재 AI 3명이 백그라운드에서 주제를 놓고 끊임없이 대화합니다.
+            천재 AI 3명이 Gemini·GPT API로 주제를 놓고 대화합니다.
           </p>
         </div>
 
@@ -33,9 +34,9 @@ export default function Home() {
               토론 기록
             </h2>
             <div className="flex gap-3 text-xs text-white/30">
-              <span>🌌 아틀라스</span>
-              <span>🔑 사이퍼</span>
-              <span>✨ 엠버</span>
+              <span>Gemini {personaNamesLabel("gemini")}</span>
+              <span>·</span>
+              <span>GPT {personaNamesLabel("openai")}</span>
             </div>
           </div>
           <DebateList />

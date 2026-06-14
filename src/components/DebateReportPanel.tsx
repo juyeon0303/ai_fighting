@@ -1,12 +1,15 @@
 "use client";
 
-import type { DebateReport } from "@/lib/types";
+import type { ApiLayout, DebateReport } from "@/lib/types";
+import { personaDisplayName } from "@/lib/personas";
+import { personaProvider } from "@/lib/debate-llm-config";
 
 interface DebateReportPanelProps {
   report: DebateReport | null;
   reportStatus: string;
   visible: boolean;
   onClose: () => void;
+  apiLayout?: ApiLayout | null;
 }
 
 function Section({
@@ -45,7 +48,16 @@ export function DebateReportPanel({
   reportStatus,
   visible,
   onClose,
+  apiLayout = "gemini_only",
 }: DebateReportPanelProps) {
+  const atlasName = personaDisplayName(
+    "atlas",
+    personaProvider(apiLayout ?? "gemini_only", "atlas"),
+  );
+  const cipherName = personaDisplayName(
+    "cipher",
+    personaProvider(apiLayout ?? "gemini_only", "cipher"),
+  );
   if (!visible) return null;
 
   return (
@@ -93,8 +105,8 @@ export function DebateReportPanel({
             </div>
 
             <Section title="중간 합의 포인트" items={report.consensusPoints} color="#fbbf24" />
-            <Section title="아틀라스 관점 (큰 그림)" items={report.proArguments} color="#f59e0b" />
-            <Section title="사이퍼 관점 (논리)" items={report.conArguments} color="#8b5cf6" />
+            <Section title={`${atlasName} 관점 (큰 그림)`} items={report.proArguments} color="#f59e0b" />
+            <Section title={`${cipherName} 관점 (논리)`} items={report.conArguments} color="#8b5cf6" />
             <Section title="미해결 쟁점" items={report.unresolvedIssues} color="#94a3b8" />
 
             <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/8 p-4">

@@ -16,8 +16,7 @@ import type { ApiLayout } from "@/lib/types";
 export function TopicForm() {
   const [topic, setTopic] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<"free" | "user_api">("free");
-  const [layout, setLayout] = useState<ApiLayout>("openai_only");
+  const [layout, setLayout] = useState<ApiLayout>("gemini_only");
   const [openaiKey, setOpenaiKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [openaiModel, setOpenaiModel] = useState(DEFAULT_OPENAI_MODEL);
@@ -29,7 +28,6 @@ export function TopicForm() {
   useEffect(() => {
     const saved = loadApiSettings();
     if (!saved) return;
-    if (saved.enabled) setMode("user_api");
     setLayout(saved.layout);
     setOpenaiKey(saved.openaiKey);
     setGeminiKey(saved.geminiKey);
@@ -42,23 +40,20 @@ export function TopicForm() {
     e.preventDefault();
     if (!topic.trim() || loading) return;
 
-    if (mode === "user_api") {
-      const err = validateUserApiInput({
-        layout,
-        openaiKey,
-        geminiKey,
-        openaiModel,
-        geminiModel,
-        maxTokenBudget,
-      });
-      if (err) {
-        alert(err);
-        return;
-      }
+    const err = validateUserApiInput({
+      layout,
+      openaiKey,
+      geminiKey,
+      openaiModel,
+      geminiModel,
+      maxTokenBudget,
+    });
+    if (err) {
+      alert(err);
+      return;
     }
 
     const toSave = settingsFromPanel(
-      mode,
       layout,
       openaiKey,
       geminiKey,
@@ -71,22 +66,20 @@ export function TopicForm() {
 
     setLoading(true);
     try {
-      const body: Record<string, unknown> = { topic };
-      if (mode === "user_api") {
-        body.userApi = {
-          layout,
-          openaiKey: openaiKey.trim() || undefined,
-          geminiKey: geminiKey.trim() || undefined,
-          openaiModel,
-          geminiModel,
-          maxTokenBudget,
-        };
-      }
-
       const res = await fetch("/api/debates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          topic,
+          userApi: {
+            layout,
+            openaiKey: openaiKey.trim() || undefined,
+            geminiKey: geminiKey.trim() || undefined,
+            openaiModel,
+            geminiModel,
+            maxTokenBudget,
+          },
+        }),
       });
 
       if (!res.ok) {
@@ -106,19 +99,15 @@ export function TopicForm() {
   }
 
   const modeHint =
-    mode === "user_api"
-      ? layout === "gpt_vs_gemini"
-        ? "GPT vs Gemini 교차 토론 · 예산 내에서만 실행"
-        : layout === "gemini_only"
-          ? "Gemini API로 토론 · 예산 내에서만 실행"
-          : "GPT API로 토론 · 예산 내에서만 실행"
-      : "무료 엔진으로 토론 · API 키 불필요";
+    layout === "gpt_vs_gemini"
+      ? "GPT vs Gemini 교차 토론 · 예산 내에서만 실행"
+      : layout === "gemini_only"
+        ? "Gemini 3명이 순수 API로 토론"
+        : "GPT 3명이 순수 API로 토론";
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">
       <ApiKeySetupPanel
-        mode={mode}
-        onModeChange={setMode}
         layout={layout}
         onLayoutChange={setLayout}
         openaiKey={openaiKey}
@@ -140,7 +129,7 @@ export function TopicForm() {
           type="text"
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
-          placeholder="예: 인공지능이 인간의 일자리를 대체해야 하는가?"
+          placeholder="예: 동양 vs 서양 사고방식"
           className="w-full rounded-2xl border border-white/10 bg-white/5 px-6 py-5 pr-36 text-lg text-white placeholder:text-white/30 outline-none transition focus:border-violet-500/50 focus:bg-white/8"
           disabled={loading}
         />
