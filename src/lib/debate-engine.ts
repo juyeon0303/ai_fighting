@@ -29,8 +29,7 @@ import {
 } from "./debate-turn-budget";
 import {
   effectiveTurnIntervalMs,
-  getNextPersona,
-  canAppendTurn,
+  pickNextSpeaker,
   TURNS_PER_ROUND,
   WORKER_TICK_MS,
 } from "./personas";
@@ -149,18 +148,12 @@ async function processDebateTurnInner(
     const messageCountAtStart = messages.length;
     const round = Math.floor(messageCountAtStart / TURNS_PER_ROUND) + 1;
 
-    if (round > debate.maxRounds) {
+    if (messageCountAtStart >= debate.maxRounds * TURNS_PER_ROUND) {
       await endDebate(debateId, "max_rounds");
       return null;
     }
 
-    const personaId = getNextPersona(round, messageCountAtStart);
-    if (!canAppendTurn(messages, personaId)) {
-      console.warn(
-        `[debate ${debateId}] blocked invalid turn slot ${personaId} (count=${messageCountAtStart})`,
-      );
-      return null;
-    }
+    const personaId = pickNextSpeaker(messages, debateId);
 
     const runtime = resolvePersonaLlmRuntime(debate, personaId);
     const turn = await generateDebateTurn(
@@ -231,13 +224,6 @@ async function processDebateTurnInner(
       return null;
     }
 
-    if (!canAppendTurn(latest, personaId)) {
-      console.warn(
-        `[debate ${debateId}] save blocked: slot taken or wrong speaker ${personaId}`,
-      );
-      return null;
-    }
-
     if (turn.tokensUsed > 0) {
       const updated = await addTokenUsage(debateId, turn.tokensUsed);
       if (updated && isTokenBudgetExceeded(updated)) {
@@ -247,6 +233,7 @@ async function processDebateTurnInner(
           turn.content,
           round,
           turn.source,
+          messageCountAtStart,
         );
         if (!message) return null;
         debateEvents.emit("message", { debateId, message });
@@ -268,6 +255,7 @@ async function processDebateTurnInner(
       turn.content,
       round,
       turn.source,
+      messageCountAtStart,
     );
     if (!message) {
       console.warn(

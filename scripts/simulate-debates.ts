@@ -5,7 +5,7 @@
 import { parseTopic, getModeLabel } from "../src/lib/topic-context";
 import { buildGeminiContents } from "../src/lib/debate-content";
 import { isTurnComplete } from "../src/lib/debate-turn-budget";
-import { canAppendTurn, DEBATE_TURN_ORDER } from "../src/lib/personas";
+import { DEBATE_TURN_ORDER, pickNextSpeaker } from "../src/lib/personas";
 import type { DebateMessage } from "../src/lib/types";
 
 const TEST_TOPICS = [
@@ -62,9 +62,9 @@ function main() {
   }
   console.log("[PASS] turn completeness checks\n");
 
-  const corrupt: DebateMessage[] = [
+  const freeOrder: DebateMessage[] = [
     {
-      id: "c1",
+      id: "f1",
       debateId: "sim",
       personaId: "atlas",
       content: "a",
@@ -72,26 +72,27 @@ function main() {
       createdAt: new Date().toISOString(),
     },
     {
-      id: "c2",
+      id: "f2",
       debateId: "sim",
-      personaId: "ember",
+      personaId: "atlas",
       content: "b",
       round: 1,
       createdAt: new Date().toISOString(),
     },
     {
-      id: "c3",
+      id: "f3",
       debateId: "sim",
-      personaId: "cipher",
+      personaId: "ember",
       content: "c",
       round: 1,
       createdAt: new Date().toISOString(),
     },
   ];
-  if (!canAppendTurn(corrupt, "atlas")) {
-    throw new Error("corrupt history must allow count-based recovery (atlas)");
+  const next = pickNextSpeaker(freeOrder, "sim");
+  if (!DEBATE_TURN_ORDER.includes(next)) {
+    throw new Error(`pickNextSpeaker returned invalid persona: ${next}`);
   }
-  console.log("[PASS] turn slot recovery after order skew\n");
+  console.log("[PASS] free-order speaker pick\n");
 
   let passed = 0;
   let failed = 0;
@@ -101,7 +102,8 @@ function main() {
       const ctx = parseTopic(topic);
       const messages: DebateMessage[] = [];
 
-      for (const personaId of DEBATE_TURN_ORDER) {
+      for (let i = 0; i < DEBATE_TURN_ORDER.length; i++) {
+        const personaId = pickNextSpeaker(messages, `sim-${topic}`);
         const contents = buildGeminiContents(
           ctx.topic,
           messages,
@@ -131,7 +133,7 @@ function main() {
           throw new Error("contents empty");
         }
         messages.push({
-          id: `sim-${personaId}`,
+          id: `sim-${personaId}-${i}`,
           debateId: "sim",
           personaId,
           content: "테스트 발언입니다.",
@@ -152,8 +154,8 @@ function main() {
       if (!geUser || geUser.role !== "user") {
         throw new Error("자 line must be user with speaker label");
       }
-      if (miModel.length !== 1 || !miModel[0]?.text.includes("테스트")) {
-        throw new Error("강 should have exactly one model turn (self)");
+      if (miModel.length < 1) {
+        throw new Error("강 should have at least one model turn (self)");
       }
 
       passed++;
@@ -170,17 +172,28 @@ function main() {
 
   if (failed > 0) process.exit(1);
 
-  console.log("=== 샘플: 페이커 vs 쵸비 / 자 차례 ===\n");
-  const history: DebateMessage[] = DEBATE_TURN_ORDER.map((id, i) => ({
-    id: `h-${id}`,
-    debateId: "sim",
-    personaId: id,
-    content: `테스트 발언 ${i + 1}`,
-    round: 1,
-    createdAt: new Date().toISOString(),
-    llmSource: "gemini" as const,
-  }));
-  const sample = buildGeminiContents("페이커 vs 쵸비", history, "atlas", "gemini");
+  console.log("=== 샘플: 페이커 vs 쵸비 / 자 연속 발언 후 강 ===\n");
+  const history: DebateMessage[] = [
+    {
+      id: "h-atlas-1",
+      debateId: "sim",
+      personaId: "atlas",
+      content: "테스트 발언 1",
+      round: 1,
+      createdAt: new Date().toISOString(),
+      llmSource: "gemini" as const,
+    },
+    {
+      id: "h-atlas-2",
+      debateId: "sim",
+      personaId: "atlas",
+      content: "테스트 발언 2",
+      round: 1,
+      createdAt: new Date().toISOString(),
+      llmSource: "gemini" as const,
+    },
+  ];
+  const sample = buildGeminiContents("페이커 vs 쵸비", history, "cipher", "gemini");
   for (const c of sample) {
     console.log(`[${c.role}] ${c.text.slice(0, 120)}${c.text.length > 120 ? "…" : ""}`);
   }

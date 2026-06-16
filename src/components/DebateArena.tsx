@@ -5,18 +5,11 @@ import type {
   ApiLayout,
   DebateMessage,
   DebateReport,
-  PersonaId,
   TimelineEvent,
 } from "@/lib/types";
 import { parseTopic, getModeLabel } from "@/lib/topic-context";
 import {
-  DEBATE_TURN_ORDER,
-  getPersona,
-  normalizePersonaId,
-} from "@/lib/personas";
-import {
   layoutLabel,
-  personaProvider,
   providerLabel,
   isTokenBudgetLow,
   MIN_TURN_TOKEN_RESERVE,
@@ -228,19 +221,6 @@ export function DebateArena({ debateId }: DebateArenaProps) {
     if (newStatus === "ended") setShowReport(true);
   }
 
-  const nextPersona: PersonaId | undefined = (() => {
-    if (status !== "active") return undefined;
-    return DEBATE_TURN_ORDER[messages.length % DEBATE_TURN_ORDER.length];
-  })();
-
-  const waitingSpeakerName =
-    nextPersona && status === "active"
-      ? getPersona(
-          nextPersona,
-          personaProvider(apiLayout ?? "gemini_only", nextPersona),
-        ).name
-      : undefined;
-
   const topicCtx = topic ? parseTopic(topic) : null;
 
   const sourceStats = messages.reduce(
@@ -406,10 +386,10 @@ export function DebateArena({ debateId }: DebateArenaProps) {
           topic={topic}
           messageCount={messages.length}
           lastPersonaId={lastPersonaId}
-          nextPersona={nextPersona}
           status={status}
           llmMode={llmMode}
           apiLayout={apiLayout}
+          conversationLive={status === "active" && messages.length > 0}
         />
 
         <section className="relative flex min-w-0 flex-1 flex-col border-r border-[var(--brand-gold)]/8">
@@ -431,24 +411,16 @@ export function DebateArena({ debateId }: DebateArenaProps) {
               </div>
             )}
             <div className="mx-auto max-w-2xl space-y-0">
-              {messages.map((msg, i) => {
-                const prev = messages[i - 1];
-                const sameSpeakerTwice =
-                  prev &&
-                  normalizePersonaId(prev.personaId) ===
-                    normalizePersonaId(msg.personaId);
-                return (
-                  <MessageBubble
-                    key={msg.id}
-                    message={msg}
-                    prevMessage={prev}
-                    isNew={newMessageIds.has(msg.id)}
-                    sameSpeakerTwice={sameSpeakerTwice}
-                  />
-                );
-              })}
+              {messages.map((msg, i) => (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  prevMessage={messages[i - 1]}
+                  isNew={newMessageIds.has(msg.id)}
+                />
+              ))}
               {status === "active" && messages.length > 0 && (
-                <TypingIndicator speakerName={waitingSpeakerName} />
+                <TypingIndicator />
               )}
               <div ref={bottomRef} />
             </div>

@@ -15,14 +15,12 @@ interface MessageBubbleProps {
   message: DebateMessage;
   prevMessage?: DebateMessage;
   isNew?: boolean;
-  sameSpeakerTwice?: boolean;
 }
 
 export function MessageBubble({
   message,
   prevMessage,
   isNew,
-  sameSpeakerTwice,
 }: MessageBubbleProps) {
   const pid = normalizePersonaId(message.personaId);
   const provider = providerFromMessageSource(message.llmSource);
@@ -63,11 +61,6 @@ export function MessageBubble({
               : message.llmSource === "openai"
                 ? "GPT"
                 : "엔진"}
-          </span>
-        )}
-        {sameSpeakerTwice && (
-          <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-300/80">
-            순서 오류
           </span>
         )}
         {spark && (

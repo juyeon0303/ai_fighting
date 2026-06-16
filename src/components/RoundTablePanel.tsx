@@ -87,6 +87,7 @@ function SeatBadge({
   llmMode,
   apiLayout,
   isActive,
+  isLive = false,
 }: {
   personaId: PersonaId;
   name: string;
@@ -94,17 +95,18 @@ function SeatBadge({
   llmMode: "free" | "user_api";
   apiLayout: ApiLayout | null;
   isActive: boolean;
+  isLive?: boolean;
 }) {
   const meta = PERSONA_META[personaId];
   return (
     <div
-      className={`debate-seat flex flex-col items-center transition-transform duration-300 ${isActive ? "debate-seat-active scale-105" : ""}`}
+      className={`debate-seat flex flex-col items-center transition-transform duration-300 ${isActive ? "debate-seat-active scale-105" : isLive ? "opacity-90" : ""}`}
     >
       <div
         className="relative flex h-12 w-12 items-center justify-center rounded-full text-xl shadow-lg"
         style={{
-          backgroundColor: `${meta.color}35`,
-          border: `2px solid ${isActive ? meta.color : `${meta.color}66`}`,
+          backgroundColor: `${meta.color}${isLive ? "28" : "35"}`,
+          border: `2px solid ${isActive ? meta.color : isLive ? `${meta.color}55` : `${meta.color}66`}`,
           boxShadow: isActive ? `0 0 24px ${meta.color}55` : undefined,
         }}
       >
@@ -113,6 +115,12 @@ function SeatBadge({
           <span
             className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full ring-2 ring-black/40"
             style={{ backgroundColor: meta.color }}
+          />
+        )}
+        {isLive && !isActive && (
+          <span
+            className="absolute inset-0 rounded-full ring-1 ring-white/10"
+            aria-hidden
           />
         )}
       </div>
@@ -130,20 +138,20 @@ interface RoundTablePanelProps {
   topic: string;
   messageCount: number;
   lastPersonaId: string | null;
-  nextPersona?: PersonaId;
   status: string;
   llmMode: "free" | "user_api";
   apiLayout: ApiLayout | null;
+  conversationLive?: boolean;
 }
 
 export function RoundTablePanel({
   topic,
   messageCount,
   lastPersonaId,
-  nextPersona,
   status,
   llmMode,
   apiLayout,
+  conversationLive = false,
 }: RoundTablePanelProps) {
   return (
     <aside className="round-table-panel flex h-full w-[min(100%,26rem)] shrink-0 flex-col border-r border-[var(--brand-gold)]/10 bg-black/15 lg:w-[28rem]">
@@ -174,10 +182,11 @@ export function RoundTablePanel({
             const isSpeaking =
               status === "active" &&
               normalizePersonaId(lastPersonaId ?? "") === personaId;
-            const isNext =
+            const isLive =
+              conversationLive &&
               status === "active" &&
-              nextPersona === personaId &&
-              messageCount > 0;
+              messageCount > 0 &&
+              !isSpeaking;
 
             return (
               <div
@@ -193,7 +202,8 @@ export function RoundTablePanel({
                   provider={provider}
                   llmMode={llmMode}
                   apiLayout={apiLayout}
-                  isActive={isSpeaking || isNext}
+                  isActive={isSpeaking}
+                  isLive={isLive}
                 />
               </div>
             );

@@ -78,6 +78,7 @@ export function personaSystemInstruction(
     `친구 ${names}랑 ${chat}`,
     length,
     "말투: 근데, 솔직히, 아니, 그치, ㅋㅋ, ~거든, ~잖아 섞어 써.",
+    "순서 정해진 거 없음. 말하고 싶을 때 끼어들어도 되고 연속으로 말해도 됨.",
     "직전 말에 자연스럽게 이어져. 매번 '반박합니다' 같은 토론 말투는 금지.",
     "네 예전 말을 남 말처럼 만들거나 자기 말을 까지 마.",
     "꾸며낸 연구·대학 실험·통계 인용 금지. 확실치 않으면 단정 짧게.",
@@ -87,7 +88,7 @@ export function personaSystemInstruction(
 }
 
 function openingUserMessage(ctx: TopicContext, provider: ApiProvider): string {
-  return `${topicChatLine(ctx)}\n${personaNamesLabel(provider)} 셋이 돌아가며 수다해. 토론장 말투 말고 친구 단톡처럼.`;
+  return `${topicChatLine(ctx)}\n${personaNamesLabel(provider)} 셋이 막 수다해. 순서 없음. 토론장 말투 말고 친구 단톡처럼.`;
 }
 
 function historyTurn(
@@ -117,15 +118,21 @@ function currentTurnUserPrompt(
   const short = tokenSaveMode ? " 더 짧게." : "";
 
   if (history.length === 0) {
-    return `${name}, 네가 먼저. 가볍게 한마디.${short}`;
+    return `${name}, 분위기 보고 한마디.${short}`;
   }
 
   const last = history[history.length - 1]!;
+  const lastId = normalizePersonaId(last.personaId);
   const lastName = personaDisplayName(
-    normalizePersonaId(last.personaId),
+    lastId,
     providerFromMessageSource(last.llmSource),
   );
-  return `${name} 차례. [${lastName}] 말에 이어서. ${hint}${short}`;
+
+  if (lastId === personaId) {
+    return `방금 네 말 이어서. ${hint}${short}`;
+  }
+
+  return `[${lastName}] 말 듣고 끼어들어. ${hint}${short}`;
 }
 
 function buildContents(

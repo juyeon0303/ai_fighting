@@ -2,6 +2,7 @@ import type { ApiLayout, ApiProvider, DebateMessage, Persona, PersonaId } from "
 import { personaProvider } from "./debate-llm-config";
 
 export const DEBATE_TURN_ORDER: PersonaId[] = ["atlas", "cipher", "ember"];
+/** 타임라인·예산 안내용 묶음 크기 (발언 순서와 무관) */
 export const TURNS_PER_ROUND = DEBATE_TURN_ORDER.length;
 /** 발언 사이 최소 대기 (기존 토론도 이 값 이하로 동작) */
 export const DEFAULT_TURN_INTERVAL_MS = 1_500;
@@ -83,25 +84,93 @@ export function normalizePersonaId(id: string): PersonaId {
   return LEGACY_PERSONA_MAP[id] ?? "atlas";
 }
 
-export function getNextPersona(_round: number, messageCount: number): PersonaId {
-  return DEBATE_TURN_ORDER[messageCount % TURNS_PER_ROUND];
+function hashSeed(input: string): number {
+  let h = 2_166_136_261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 1_677_761_9);
+  }
+  return h >>> 0;
 }
 
-/** 저장 직전·턴 시작 시 화자 순서 검증 (다중 워커 레이스 방지) */
-export function canAppendTurn(
+function seededUnit(seed: string): number {
+  return hashSeed(seed) / 4_294_967_296;
+}
+
+function messagesSinceSpeaker(
   messages: DebateMessage[],
   personaId: PersonaId,
-): boolean {
-  const count = messages.length;
-  const expected = getNextPersona(
-    Math.floor(count / TURNS_PER_ROUND) + 1,
-    count,
-  );
-  if (expected !== personaId) return false;
-  if (count === 0) return true;
+): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (normalizePersonaId(messages[i]!.personaId) === personaId) {
+      return messages.length - 1 - i;
+    }
+  }
+  return messages.length;
+}
 
-  const last = normalizePersonaId(messages[count - 1]!.personaId);
-  return last !== personaId;
+/** 고정 순서 없이 대화 맥락으로 다음 화자 선택 (연속 발언 허용) */
+export function pickNextSpeaker(
+  messages: DebateMessage[],
+  debateId: string,
+): PersonaId {
+  if (messages.length === 0) {
+    const idx = Math.floor(
+      seededUnit(`${debateId}:open`) * DEBATE_TURN_ORDER.length,
+    );
+    return DEBATE_TURN_ORDER[idx] ?? "atlas";
+  }
+
+  const lastMsg = messages[messages.length - 1]!;
+  const lastId = normalizePersonaId(lastMsg.personaId);
+  const lastText = lastMsg.content;
+
+  const scores: Record<PersonaId, number> = {
+    atlas: 1,
+    cipher: 1,
+    ember: 1,
+  };
+
+  for (const id of DEBATE_TURN_ORDER) {
+    scores[id] += id === lastId ? 0.7 : 1.15;
+  }
+
+  for (const id of DEBATE_TURN_ORDER) {
+    if (lastText.includes(GEMINI_NAMES[id])) scores[id] += 1.6;
+  }
+
+  if (/그건|아닌데|근데|솔직히|틀렸|반박|억지|맞긴|인정/.test(lastText)) {
+    for (const id of DEBATE_TURN_ORDER) {
+      if (id !== lastId) scores[id] += 0.55;
+    }
+  }
+
+  if (/[?？]|(?:니|냐|까)\s*$/.test(lastText.trim())) {
+    for (const id of DEBATE_TURN_ORDER) {
+      if (id !== lastId) scores[id] += 0.45;
+    }
+  }
+
+  const recent = messages.slice(-5).map((m) => normalizePersonaId(m.personaId));
+  for (const id of DEBATE_TURN_ORDER) {
+    const streak = recent.filter((r) => r === id).length;
+    if (streak >= 4) scores[id] *= 0.12;
+    else if (streak >= 3) scores[id] *= 0.35;
+  }
+
+  for (const id of DEBATE_TURN_ORDER) {
+    const gap = messagesSinceSpeaker(messages, id);
+    if (gap >= 4) scores[id] += 2;
+    else if (gap >= 2) scores[id] += 0.75;
+  }
+
+  const total = DEBATE_TURN_ORDER.reduce((sum, id) => sum + scores[id], 0);
+  let roll = seededUnit(`${debateId}:${messages.length}`) * total;
+  for (const id of DEBATE_TURN_ORDER) {
+    roll -= scores[id];
+    if (roll <= 0) return id;
+  }
+  return lastId;
 }
 
 export function getPersona(
