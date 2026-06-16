@@ -109,7 +109,7 @@ function messagesSinceSpeaker(
   return messages.length;
 }
 
-/** 고정 순서 없이 대화 맥락으로 다음 화자 선택 (연속 발언 허용) */
+/** 고정 순서 없이 대화 맥락으로 다음 화자 선택 (연속 같은 화자 금지) */
 export function pickNextSpeaker(
   messages: DebateMessage[],
   debateId: string,
@@ -132,8 +132,9 @@ export function pickNextSpeaker(
   };
 
   for (const id of DEBATE_TURN_ORDER) {
-    scores[id] += id === lastId ? 0.7 : 1.15;
+    if (id !== lastId) scores[id] += 1.15;
   }
+  scores[lastId] = 0;
 
   for (const id of DEBATE_TURN_ORDER) {
     if (lastText.includes(GEMINI_NAMES[id])) scores[id] += 1.6;
@@ -154,8 +155,8 @@ export function pickNextSpeaker(
   const recent = messages.slice(-5).map((m) => normalizePersonaId(m.personaId));
   for (const id of DEBATE_TURN_ORDER) {
     const streak = recent.filter((r) => r === id).length;
-    if (streak >= 4) scores[id] *= 0.12;
-    else if (streak >= 3) scores[id] *= 0.35;
+    if (streak >= 3) scores[id] *= 0.08;
+    else if (streak >= 2) scores[id] *= 0.22;
   }
 
   for (const id of DEBATE_TURN_ORDER) {
@@ -165,12 +166,26 @@ export function pickNextSpeaker(
   }
 
   const total = DEBATE_TURN_ORDER.reduce((sum, id) => sum + scores[id], 0);
+  if (total <= 0) {
+    return DEBATE_TURN_ORDER.find((id) => id !== lastId) ?? "cipher";
+  }
   let roll = seededUnit(`${debateId}:${messages.length}`) * total;
   for (const id of DEBATE_TURN_ORDER) {
     roll -= scores[id];
     if (roll <= 0) return id;
   }
-  return lastId;
+  return DEBATE_TURN_ORDER.find((id) => id !== lastId) ?? lastId;
+}
+
+/** pickNextSpeaker 결과에 연속 발언이 섞이면 다른 화자로 교체 */
+export function enforceNextSpeaker(
+  messages: DebateMessage[],
+  picked: PersonaId,
+): PersonaId {
+  if (messages.length === 0) return picked;
+  const lastId = normalizePersonaId(messages[messages.length - 1]!.personaId);
+  if (picked !== lastId) return picked;
+  return DEBATE_TURN_ORDER.find((id) => id !== lastId) ?? picked;
 }
 
 export function getPersona(

@@ -4,7 +4,10 @@ import {
   buildDebateRetryHint,
   buildGeminiContents,
   buildOpenAiChatTurns,
+  contradictsOwnRecentSpeech,
+  driftsOffTopic,
   isLowQualityTurn,
+  isSelfAnswerTurn,
   personaSystemInstruction,
   sanitizeTurnOutput,
   scrubLowQualityPhrases,
@@ -141,6 +144,9 @@ async function callProviderTurn(
   retry: boolean,
   qualityRetry: boolean,
   incompleteRetry: boolean,
+  contradictionRetry: boolean,
+  selfAnswerRetry: boolean,
+  driftRetry: boolean,
   googleSearch: boolean,
   temperature: number,
 ): Promise<ProviderTurnResult> {
@@ -158,7 +164,7 @@ async function callProviderTurn(
     if (retry) {
       const last = contents[contents.length - 1];
       if (last?.role === "user") {
-        last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry, save, incompleteRetry)}`;
+        last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry, save, incompleteRetry, contradictionRetry, selfAnswerRetry, driftRetry)}`;
       }
     }
     const result = await requestGeminiChat(
@@ -181,7 +187,7 @@ async function callProviderTurn(
   if (retry) {
     const last = turns[turns.length - 1];
     if (last?.role === "user") {
-      last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry, save, incompleteRetry)}`;
+      last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry, save, incompleteRetry, contradictionRetry, selfAnswerRetry, driftRetry)}`;
     }
   }
   return requestOpenAiChatTurn(
@@ -221,6 +227,9 @@ export async function generateDebateTurn(
   let totalTokens = 0;
   let lastStopReason: LlmStopReason = null;
   let lastWasIncomplete = false;
+  let lastWasContradiction = false;
+  let lastWasSelfAnswer = false;
+  let lastWasDrift = false;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const result = await callProviderTurn(
@@ -232,6 +241,9 @@ export async function generateDebateTurn(
       attempt > 0,
       attempt >= 2,
       lastWasIncomplete,
+      lastWasContradiction,
+      lastWasSelfAnswer,
+      lastWasDrift,
       googleSearch,
       temperature,
     );
@@ -242,12 +254,39 @@ export async function generateDebateTurn(
       break;
     }
 
-    const content = normalizeTurn(
+    let content = normalizeTurn(
       result.content,
       personaId,
       save,
       result.truncated,
     );
+
+    if (
+      content &&
+      contradictsOwnRecentSpeech(personaId, history, content, topic)
+    ) {
+      lastWasContradiction = true;
+      lastWasSelfAnswer = false;
+      lastWasDrift = false;
+      lastWasIncomplete = false;
+      content = "";
+    }
+
+    if (content && isSelfAnswerTurn(personaId, history, content)) {
+      lastWasSelfAnswer = true;
+      lastWasContradiction = false;
+      lastWasDrift = false;
+      lastWasIncomplete = false;
+      content = "";
+    }
+
+    if (content && driftsOffTopic(topic, history, content)) {
+      lastWasDrift = true;
+      lastWasContradiction = false;
+      lastWasSelfAnswer = false;
+      lastWasIncomplete = false;
+      content = "";
+    }
 
     if (content) {
       return {
@@ -258,7 +297,9 @@ export async function generateDebateTurn(
       };
     }
 
-    lastWasIncomplete = Boolean(result.content?.trim()) || result.truncated;
+    if (!lastWasContradiction && !lastWasSelfAnswer && !lastWasDrift) {
+      lastWasIncomplete = Boolean(result.content?.trim()) || result.truncated;
+    }
   }
 
   return {

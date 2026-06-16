@@ -29,6 +29,8 @@ import {
 } from "./debate-turn-budget";
 import {
   effectiveTurnIntervalMs,
+  enforceNextSpeaker,
+  normalizePersonaId,
   pickNextSpeaker,
   TURNS_PER_ROUND,
   WORKER_TICK_MS,
@@ -153,7 +155,10 @@ async function processDebateTurnInner(
       return null;
     }
 
-    const personaId = pickNextSpeaker(messages, debateId);
+    const personaId = enforceNextSpeaker(
+      messages,
+      pickNextSpeaker(messages, debateId),
+    );
 
     const runtime = resolvePersonaLlmRuntime(debate, personaId);
     if (!runtime.apiKey) {
@@ -228,6 +233,18 @@ async function processDebateTurnInner(
         `[debate ${debateId}] stale turn skipped (${messageCountAtStart} → ${latest.length})`,
       );
       return null;
+    }
+
+    if (latest.length > 0) {
+      const lastSpeaker = normalizePersonaId(
+        latest[latest.length - 1]!.personaId,
+      );
+      if (lastSpeaker === personaId) {
+        console.warn(
+          `[debate ${debateId}] blocked back-to-back speaker (${personaId})`,
+        );
+        return null;
+      }
     }
 
     if (turn.tokensUsed > 0) {

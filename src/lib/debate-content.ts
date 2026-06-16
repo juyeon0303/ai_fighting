@@ -1,6 +1,7 @@
 import type { ApiProvider, DebateMessage, PersonaId } from "./types";
 import type { TopicContext } from "./topic-context";
 import { parseTopic, topicChatLine, topicUsesSearch } from "./topic-context";
+import type { TopicDomain } from "./topic-context";
 import {
   personaDisplayName,
   personaNamesLabel,
@@ -36,6 +37,161 @@ const TURN_HINTS = [
   "같은 시작 말고 한마디만 다르게.",
   "짧게. 단톡 속도로.",
 ];
+
+const POSITIVE_NEAR =
+  /(?:꾸준|1인분|무섭|고점|압도|캐리|맞(?:아|긴)?|인정|좋(?:아|다|긴)?|낫(?:다|긴)?|강하|대단|최고|우위|증명|핵심|goat)/i;
+const NEGATIVE_NEAR =
+  /(?:뇌절|작아|비교(?:가)?\s*안|별로|약(?:하)?|틀렸|억지|못(?:하)?|실망|하차|깨|안\s*됨)/i;
+const PIVOT_PHRASE =
+  /(?:아까|방금\s*말|인정(?:하지만|하(?:면|지만))|근데\s*그건|그래도|취소|바꿔|지금\s*생각|말\s*바꿔)/;
+const SELF_ANSWER_OPEN =
+  /^(?:그치|그래(?:서)?|맞(?:아|긴)|ㅇㅇ|그러니까|결국|당연|인정(?:해)?|알지|그건\s*맞)/;
+const META_CHAT_DRIFT =
+  /(?:톡방|단톡(?:방)?|우리\s*방|팝콘|마라톤\s*회의|채팅창|분석글(?:\s*도배)?|뇌절(?:이)?\s*(?:기본|하잖|패시브)|심심해서\s*죽|잠\s*다\s*잤)/;
+
+const DOMAIN_TOPIC_TERMS: Record<TopicDomain, RegExp> = {
+  esports:
+    /페이커|쵸비|faker|chovy|롤|lol|경기|라인|한타|월드|lck|lpl|티원|미드|슈퍼플레이|트로피|커리어|운영|프로게이머/i,
+  food: /치킨|피자|맛|먹|음식|요리|레시피|메뉴/i,
+  tech: /코드|앱|프로그래|ai|인공지능|서버|클라우드|iphone|android|react|vue/i,
+  entertainment: /영화|드라마|게임|애니|음악|아이돌|넷플릭스|netflix/i,
+  social: /연애|결혼|정치|경제|직장|학교|사회|원격/i,
+  science: /과학|물리|화학|지구|우주|dna|양자|실험/i,
+  general: /주제|논점|쟁점|비교|장단/i,
+};
+
+function topicRelevanceHits(text: string, ctx: TopicContext): number {
+  let hits = 0;
+  const lower = text.toLowerCase();
+  for (const anchor of ctx.anchors) {
+    if (anchor.length >= 2 && lower.includes(anchor.toLowerCase())) hits++;
+  }
+  if (DOMAIN_TOPIC_TERMS[ctx.domain].test(text)) hits++;
+  return hits;
+}
+
+function entitySeeds(topic: string): string[] {
+  const ctx = parseTopic(topic);
+  const seeds = new Set<string>();
+  for (const s of [ctx.sideA, ctx.sideB, ctx.displayTopic, topic]) {
+    if (s && s.trim().length >= 2) seeds.add(s.trim());
+  }
+  for (const part of topic.split(/[\s·/|vs]+/i)) {
+    const p = part.trim();
+    if (p.length >= 2 && p.length <= 12) seeds.add(p);
+  }
+  return [...seeds];
+}
+
+function entitiesInText(text: string, seeds: string[]): string[] {
+  const found = seeds.filter((s) => text.includes(s));
+  const extra = text.match(/[가-힣A-Za-z]{2,8}/g) ?? [];
+  for (const w of extra) {
+    if (seeds.some((s) => s.includes(w) || w.includes(s))) found.push(w);
+  }
+  return [...new Set(found)];
+}
+
+function sentimentNearEntity(text: string, entity: string): number {
+  let score = 0;
+  let idx = 0;
+  while (idx < text.length) {
+    const at = text.indexOf(entity, idx);
+    if (at === -1) break;
+    const window = text.slice(Math.max(0, at - 36), at + entity.length + 36);
+    if (POSITIVE_NEAR.test(window)) score += 1;
+    if (NEGATIVE_NEAR.test(window)) score -= 1;
+    idx = at + entity.length;
+  }
+  return score;
+}
+
+/** 같은 화자가 직전 입장과 반대 프레임으로 말하면 true (재시도) */
+export function contradictsOwnRecentSpeech(
+  personaId: PersonaId,
+  history: DebateMessage[],
+  newText: string,
+  topic: string,
+): boolean {
+  const t = newText.trim();
+  if (!t || PIVOT_PHRASE.test(t)) return false;
+
+  const own = history.filter(
+    (m) => normalizePersonaId(m.personaId) === personaId,
+  );
+  if (own.length === 0) return false;
+
+  const seeds = entitySeeds(topic);
+  const recentOwn = own
+    .slice(-3)
+    .map((m) => m.content)
+    .join(" ");
+  const entities = entitiesInText(`${recentOwn} ${t}`, seeds);
+  if (entities.length === 0) return false;
+
+  for (const entity of entities) {
+    const prior = own
+      .slice(-2)
+      .reduce((sum, m) => sum + sentimentNearEntity(m.content, entity), 0);
+    const now = sentimentNearEntity(t, entity);
+    if (prior >= 1 && now <= -1) return true;
+    if (prior <= -1 && now >= 1) return true;
+  }
+  return false;
+}
+
+/** 직전 발언자가 자기 자신인데, 자기 말에 동의·받아치기 하면 true */
+export function isSelfAnswerTurn(
+  personaId: PersonaId,
+  history: DebateMessage[],
+  newText: string,
+): boolean {
+  const last = history[history.length - 1];
+  if (!last || normalizePersonaId(last.personaId) !== personaId) return false;
+
+  const t = newText.trim();
+  if (!t || PIVOT_PHRASE.test(t)) return false;
+  if (SELF_ANSWER_OPEN.test(t)) return true;
+
+  const lastWords = new Set(last.content.match(/[가-힣]{2,}/g) ?? []);
+  const newWords = t.match(/[가-힣]{2,}/g) ?? [];
+  if (newWords.length >= 4 && lastWords.size >= 3) {
+    const overlap =
+      newWords.filter((w) => lastWords.has(w)).length / newWords.length;
+    if (overlap >= 0.5 && /^(?:그치|근데|솔직히|결국|그래)/.test(t)) return true;
+  }
+  return false;
+}
+
+/** 주제에서 너무 벗어난 잡담·메타 수다면 true */
+export function driftsOffTopic(
+  topic: string,
+  history: DebateMessage[],
+  newText: string,
+): boolean {
+  const ctx = parseTopic(topic);
+  const t = newText.trim();
+  if (!t) return false;
+  if (topicRelevanceHits(t, ctx) >= 1) return false;
+  if (META_CHAT_DRIFT.test(t)) return true;
+
+  if (
+    /(?:우리(?:만)?\s*(?:개)?꿀잼|역대급\s*(?:경기|축제)|빨리\s*성사)/.test(t) &&
+    /(?:팝콘|축제|톡방|잠\s*다\s*잤|분석글)/.test(t)
+  ) {
+    return true;
+  }
+
+  if (history.length >= 6) {
+    const recent = [...history.slice(-2).map((m) => m.content), t];
+    const allOffTopic = recent.every((line) => topicRelevanceHits(line, ctx) === 0);
+    if (allOffTopic && /(?:ㅋㅋ|꿀잼|재밌|뇌절|우리\s*방|팝콘)/.test(t)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 /** 꾸며낸 인용·에세이 남발만 재시도 */
 export function isLowQualityTurn(text: string): boolean {
@@ -78,8 +234,11 @@ export function personaSystemInstruction(
     `친구 ${names}랑 ${chat}`,
     length,
     "말투: 근데, 솔직히, 아니, 그치, ㅋㅋ, ~거든, ~잖아 섞어 써.",
-    "순서 정해진 거 없음. 말하고 싶을 때 끼어들어도 되고 연속으로 말해도 됨.",
+    "순서 정해진 거 없음. 말하고 싶을 때 끼어들되, 방금 네가 말했으면 한 턴 쉬어.",
     "직전 말에 자연스럽게 이어져. 매번 '반박합니다' 같은 토론 말투는 금지.",
+    "자기 말에 '그치' '맞아' '그래서'로 받는 자문자답 금지. 반응은 남 말에만.",
+    "주제에서 완전히 벗어나 톡방·팝콘·잡수다만 하지 마. 가끔 빗대는 건 되는데 핵심 주제는 유지.",
+    "네가 이미 말한 입장과 반대 주장 금지. 입장 바꿀 때만 '아까는 그랬는데'처럼 이유부터.",
     "네 예전 말을 남 말처럼 만들거나 자기 말을 까지 마.",
     "꾸며낸 연구·대학 실험·통계 인용 금지. 확실치 않으면 단정 짧게.",
     "영어·메타·괄호 설명·비유 라벨 붙이지 마. 한국어 반말만.",
@@ -108,31 +267,53 @@ function historyTurn(
 }
 
 function currentTurnUserPrompt(
+  topic: string,
   personaId: PersonaId,
   provider: ApiProvider,
   history: DebateMessage[],
   tokenSaveMode: boolean,
 ): string {
+  const ctx = parseTopic(topic);
   const name = personaDisplayName(personaId, provider);
   const hint = TURN_HINTS[history.length % TURN_HINTS.length]!;
   const short = tokenSaveMode ? " 더 짧게." : "";
 
+  const ownRecent = history
+    .filter((m) => normalizePersonaId(m.personaId) === personaId)
+    .slice(-2);
+
+  const last = history[history.length - 1];
+  const lastId = last ? normalizePersonaId(last.personaId) : personaId;
+  const lastName = last
+    ? personaDisplayName(lastId, providerFromMessageSource(last.llmSource))
+    : name;
+
+  let nudge: string;
   if (history.length === 0) {
-    return `${name}, 분위기 보고 한마디.${short}`;
+    nudge = `${name}, 분위기 보고 한마디.${short}`;
+  } else if (lastId === personaId) {
+    nudge = `방금 네가 말했으니 자문자답 금지. 남 반응 기다리거나 새 각도만.${short}`;
+  } else {
+    nudge = `[${lastName}] 말 듣고 끼어들어. ${hint}${short}`;
   }
 
-  const last = history[history.length - 1]!;
-  const lastId = normalizePersonaId(last.personaId);
-  const lastName = personaDisplayName(
-    lastId,
-    providerFromMessageSource(last.llmSource),
-  );
-
-  if (lastId === personaId) {
-    return `방금 네 말 이어서. ${hint}${short}`;
+  if (ownRecent.length > 0) {
+    const recap = ownRecent
+      .map((m) => m.content.replace(/\s+/g, " ").trim())
+      .join(" / ")
+      .slice(0, 220);
+    nudge += `\n[네가 방금까지 한 말]: ${recap}. 이거랑 모순되면 안 됨.`;
   }
 
-  return `[${lastName}] 말 듣고 끼어들어. ${hint}${short}`;
+  if (history.length >= 4) {
+    const focus =
+      ctx.sideA && ctx.sideB
+        ? `${ctx.sideA}·${ctx.sideB} 중심으로. 톡방·팝콘 잡담만 하지 마.`
+        : `「${ctx.displayTopic}」에서 너무 벗어나지 마.`;
+    nudge += `\n${focus}`;
+  }
+
+  return nudge;
 }
 
 function buildContents(
@@ -145,6 +326,7 @@ function buildContents(
   const ctx = parseTopic(topic);
   const opening = openingUserMessage(ctx, provider);
   const nudge = currentTurnUserPrompt(
+    topic,
     personaId,
     provider,
     history,
@@ -207,7 +389,25 @@ export function buildDebateRetryHint(
   quality = false,
   tokenSaveMode = false,
   incomplete = false,
+  contradiction = false,
+  selfAnswer = false,
+  drift = false,
 ): string {
+  if (contradiction) {
+    return tokenSaveMode
+      ? "네 말이 아까랑 모순됐어. 같은 입장 이어가거나 '아까 말 취소'하고 이유부터. 다시."
+      : "네가 아까 한 말이랑 모순됐어. 입장 이어가거나 바꿀 거면 이유부터 말하고 다시.";
+  }
+  if (selfAnswer) {
+    return tokenSaveMode
+      ? "방금 네 말에 '그치' 받은 자문자답이야. 남 말에 반응하거나 새 포인트만. 다시."
+      : "자기 말에 동의·받아치기 한 자문자답이야. 친구 말에 반응하거나 다른 각도로 다시.";
+  }
+  if (drift) {
+    return tokenSaveMode
+      ? "주제 너무 벗어났어. 톡방·팝콘 말고 토론 주제로 다시."
+      : "주제에서 너무 새었어. 잡담 말고 토론 핵심(선수·쟁점)으로 다시.";
+  }
   if (incomplete) {
     return tokenSaveMode
       ? "중간에 끊겼어. 1~3문장, 친구 반말로 끝까지 다시."

@@ -3,9 +3,9 @@
  * 실행: npm run simulate
  */
 import { parseTopic, getModeLabel } from "../src/lib/topic-context";
-import { buildGeminiContents } from "../src/lib/debate-content";
+import { buildGeminiContents, contradictsOwnRecentSpeech, driftsOffTopic, isSelfAnswerTurn } from "../src/lib/debate-content";
 import { isTurnComplete } from "../src/lib/debate-turn-budget";
-import { DEBATE_TURN_ORDER, pickNextSpeaker } from "../src/lib/personas";
+import { DEBATE_TURN_ORDER, enforceNextSpeaker, pickNextSpeaker } from "../src/lib/personas";
 import type { DebateMessage } from "../src/lib/types";
 
 const TEST_TOPICS = [
@@ -92,7 +92,110 @@ function main() {
   if (!DEBATE_TURN_ORDER.includes(next)) {
     throw new Error(`pickNextSpeaker returned invalid persona: ${next}`);
   }
+  const soloAtlas: DebateMessage[] = [
+    {
+      id: "solo1",
+      debateId: "sim",
+      personaId: "atlas",
+      content: "페이커랑 쵸비 둘 다 잘함",
+      round: 1,
+      createdAt: new Date().toISOString(),
+    },
+  ];
+  const afterAtlas = pickNextSpeaker(soloAtlas, "sim-solo");
+  if (afterAtlas === "atlas") {
+    throw new Error("pickNextSpeaker must not repeat immediate speaker");
+  }
+  const enforced = enforceNextSpeaker(soloAtlas, "atlas");
+  if (enforced === "atlas") {
+    throw new Error("enforceNextSpeaker must swap back-to-back speaker");
+  }
   console.log("[PASS] free-order speaker pick\n");
+
+  const contradictionHistory: DebateMessage[] = [
+    {
+      id: "h1",
+      debateId: "sim",
+      personaId: "cipher",
+      content: "솔직히 고점은 제우스인데 꾸준함은 도란 아니냐?",
+      round: 1,
+      createdAt: new Date().toISOString(),
+      llmSource: "gemini",
+    },
+    {
+      id: "h2",
+      debateId: "sim",
+      personaId: "atlas",
+      content: "도란도 꾸준히 1인분 이상 해주잖아.",
+      round: 1,
+      createdAt: new Date().toISOString(),
+      llmSource: "gemini",
+    },
+  ];
+  if (
+    !contradictsOwnRecentSpeech(
+      "cipher",
+      contradictionHistory,
+      "뇌절 빈도는 도란이 더 높은 거 아님?",
+      "제우스 vs 도란",
+    )
+  ) {
+    throw new Error("expected cipher self-contradiction on 도란 praise then 뇌절");
+  }
+  if (
+    contradictsOwnRecentSpeech(
+      "cipher",
+      contradictionHistory,
+      "아까 말 취소하고, 뇌절은 도란이 더 많긴 해.",
+      "제우스 vs 도란",
+    )
+  ) {
+    throw new Error("pivot phrase should allow stance shift");
+  }
+  console.log("[PASS] self-contradiction guard\n");
+
+  const selfAnswerHistory: DebateMessage[] = [
+    {
+      id: "sa1",
+      debateId: "sim",
+      personaId: "atlas",
+      content:
+        "근데 솔직히 둘 다 잘하는 건 팩트라 누가 이기든 보는 맛은 있잖아. 비교 자체가 좀 무의미한 듯.",
+      round: 1,
+      createdAt: new Date().toISOString(),
+      llmSource: "gemini",
+    },
+  ];
+  if (
+    !isSelfAnswerTurn(
+      "atlas",
+      selfAnswerHistory,
+      "그치, 결국 팀 게임이라 1대1 무력만 따지는 게 좀 의미 없긴 해.",
+    )
+  ) {
+    throw new Error("expected self-answer detection on 그치 opener");
+  }
+  console.log("[PASS] self-answer guard\n");
+
+  if (
+    !driftsOffTopic(
+      "페이커 vs 쵸비",
+      [],
+      "우리 톡방 원래도 정상이 아닌데 뇌절하잖아 ㅋㅋ",
+    )
+  ) {
+    throw new Error("expected topic drift on chat-room meta talk");
+  }
+  if (
+    driftsOffTopic(
+      "페이커 vs 쵸비",
+      [],
+      "쵸비 라인전 디테일이 미쳤어 페이커랑 결이 다르지",
+    )
+  ) {
+    throw new Error("on-topic esports talk should not drift");
+  }
+  console.log("[PASS] topic drift guard\n");
 
   let passed = 0;
   let failed = 0;
