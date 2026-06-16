@@ -29,8 +29,12 @@ export function estimateTokenBudget(
   budget: number,
   layout: ApiLayout = "openai_only",
   turnIntervalMs = DEFAULT_TURN_INTERVAL_MS,
+  tokenSaveMode = false,
 ): TokenBudgetGuide {
-  const tokensPerTurn = TOKENS_PER_TURN[layout];
+  const baseTokens = TOKENS_PER_TURN[layout];
+  const tokensPerTurn = tokenSaveMode
+    ? Math.round(baseTokens * 0.45)
+    : baseTokens;
   const estimatedTurns = Math.max(1, Math.floor(budget / tokensPerTurn));
   const estimatedRounds = Math.max(1, Math.floor(estimatedTurns / TURNS_PER_ROUND));
   const estimatedHours =
@@ -47,7 +51,8 @@ export function estimateTokenBudget(
         : "GPT";
 
   const intervalSec = Math.round(turnIntervalMs / 100) / 10;
-  const summary = `${budget.toLocaleString()} 토큰 ≈ 발언 ${estimatedTurns}개(합의 약 ${estimatedRounds}회) · ${layoutLabel} · ${estimatedHours}시간 분량(${intervalSec}초 간격) · ${estimatedUsd}`;
+  const modeNote = tokenSaveMode ? " · 절약 모드" : "";
+  const summary = `${budget.toLocaleString()} 토큰 ≈ 발언 ${estimatedTurns}개(합의 약 ${estimatedRounds}회) · ${layoutLabel}${modeNote} · ${estimatedHours}시간 분량(${intervalSec}초 간격) · ${estimatedUsd}`;
 
   return {
     budget,

@@ -53,7 +53,9 @@ async function analyzeRound(
     debate!.topic,
     messages,
     round,
-    analysisOpts ?? undefined,
+    analysisOpts
+      ? { ...analysisOpts, tokenSaveMode: debate!.tokenSaveMode ?? false }
+      : undefined,
   );
 
   if (!eventData) return;

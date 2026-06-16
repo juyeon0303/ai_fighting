@@ -39,6 +39,7 @@ export async function POST(request: Request) {
     openaiModel: normalizeOpenaiModel(body.userApi.openaiModel),
     geminiModel: normalizeGeminiModel(body.userApi.geminiModel),
     maxTokenBudget: body.userApi.maxTokenBudget,
+    tokenSaveMode: body.userApi.tokenSaveMode === true,
   };
   const validationError = validateUserApiInput(input);
   if (validationError) {

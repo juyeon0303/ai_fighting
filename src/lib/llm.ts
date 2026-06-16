@@ -51,11 +51,15 @@ function mapApiError(error: unknown): LlmStopReason {
   return null;
 }
 
-function normalizeTurn(raw: string | null, personaId: PersonaId): string {
+function normalizeTurn(
+  raw: string | null,
+  personaId: PersonaId,
+  tokenSaveMode: boolean,
+): string {
   if (!raw?.trim()) return "";
   const cleaned = sanitizeTurnOutput(raw);
   const scrubbed = scrubLowQualityPhrases(cleaned);
-  const clamped = clampTurnContent(scrubbed, personaId);
+  const clamped = clampTurnContent(scrubbed, personaId, tokenSaveMode);
   if (isIncompleteTurn(clamped)) return "";
   if (isLowQualityTurn(clamped)) return "";
   return clamped;
@@ -67,6 +71,7 @@ async function requestOpenAiChatTurn(
   system: string,
   turns: ReturnType<typeof buildOpenAiChatTurns>,
   personaId: PersonaId,
+  tokenSaveMode: boolean,
 ): Promise<{ content: string | null; tokensUsed: number; stopReason: LlmStopReason }> {
   try {
     const response = await client.chat.completions.create({
@@ -78,8 +83,8 @@ async function requestOpenAiChatTurn(
           content: t.text,
         })),
       ],
-      max_tokens: maxOutputTokens(personaId),
-      temperature: 0.75,
+      max_tokens: maxOutputTokens(personaId, tokenSaveMode),
+      temperature: tokenSaveMode ? 0.65 : 0.75,
     });
 
     return {
@@ -106,13 +111,20 @@ async function callProviderTurn(
   qualityRetry: boolean,
 ): Promise<{ content: string | null; tokensUsed: number; stopReason: LlmStopReason }> {
   const provider = runtime.provider;
+  const save = runtime.tokenSaveMode;
 
   if (provider === "gemini") {
-    const contents = buildGeminiContents(topic, history, personaId, "gemini");
+    const contents = buildGeminiContents(
+      topic,
+      history,
+      personaId,
+      "gemini",
+      save,
+    );
     if (retry) {
       const last = contents[contents.length - 1];
       if (last?.role === "user") {
-        last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry)}`;
+        last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry, save)}`;
       }
     }
     return requestGeminiChat(
@@ -120,24 +132,25 @@ async function callProviderTurn(
       runtime.model,
       system,
       contents,
-      maxOutputTokens(personaId),
+      maxOutputTokens(personaId, save),
       { googleSearch: true },
     );
   }
 
-  const turns = buildOpenAiChatTurns(topic, history, personaId, "openai");
-    if (retry) {
-      const last = turns[turns.length - 1];
-      if (last?.role === "user") {
-        last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry)}`;
-      }
+  const turns = buildOpenAiChatTurns(topic, history, personaId, "openai", save);
+  if (retry) {
+    const last = turns[turns.length - 1];
+    if (last?.role === "user") {
+      last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry, save)}`;
     }
+  }
   return requestOpenAiChatTurn(
     new OpenAI({ apiKey: runtime.apiKey }),
     runtime.model,
     system,
     turns,
     personaId,
+    save,
   );
 }
 
@@ -151,6 +164,7 @@ export async function generateDebateTurn(
 ): Promise<TurnResult> {
   parseTopic(topic);
   const source = runtime.provider === "gemini" ? "gemini" : "openai";
+  const save = runtime.tokenSaveMode;
 
   if (!runtime.apiKey) {
     return {
@@ -161,7 +175,7 @@ export async function generateDebateTurn(
     };
   }
 
-  const system = personaSystemInstruction(topic, personaId, source);
+  const system = personaSystemInstruction(topic, personaId, source, save);
   let totalTokens = 0;
   let lastStopReason: LlmStopReason = null;
 
@@ -182,7 +196,7 @@ export async function generateDebateTurn(
       break;
     }
 
-    const content = normalizeTurn(result.content, personaId);
+    const content = normalizeTurn(result.content, personaId, save);
     if (content) {
       return {
         content,

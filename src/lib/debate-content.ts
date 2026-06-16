@@ -62,6 +62,7 @@ export function personaSystemInstruction(
   topic: string,
   personaId: PersonaId,
   provider: ApiProvider,
+  tokenSaveMode = false,
 ): string {
   const name = personaDisplayName(personaId, provider);
   const roles: Record<PersonaId, string> = {
@@ -73,10 +74,14 @@ export function personaSystemInstruction(
       "쉬운 비유로 말해. 직전 말이 억지면 '그건 좀 아닌데' 하고 반박해.",
   };
 
+  const lengthRule = tokenSaveMode
+    ? "1~3문장, 짧은 반말. 핵심만. 문장은 반드시 끝까지 — 중간에 끊지 마."
+    : "편한 반말. 재미는 살려도 됨. 길이 제한 없음.";
+
   return [
     `친구들이랑 「${topic}」 가볍게 토론 중. 너는 ${name}.`,
     roles[personaId],
-    "편한 반말. 재미는 살려도 됨. 길이 제한 없음.",
+    lengthRule,
     "사실·숫자는 검색으로 확인한 것만. 모르면 '잘 모르겠는데'만.",
     "대학·실험·%·연구 인용 대잔치 금지. 철학·심리 용어로 분위기만 잡지 마.",
     "빈동의('동의해'만) 금지 — 동의해도 이유 한 줄은 붙여.",
@@ -103,17 +108,19 @@ function currentTurnUserPrompt(
   personaId: PersonaId,
   provider: ApiProvider,
   history: DebateMessage[],
+  tokenSaveMode = false,
 ): string {
   const name = personaDisplayName(personaId, provider);
+  const shortHint = tokenSaveMode ? " 짧게, 문장 끝까지." : "";
   if (history.length === 0) {
-    return `${name}, 네가 먼저 말해. 주제에 닿는 말만, 지어낸 근거는 넣지 마.`;
+    return `${name}, 네가 먼저 말해. 주제에 닿는 말만, 지어낸 근거는 넣지 마.${shortHint}`;
   }
   const last = history[history.length - 1]!;
   const lastName = personaDisplayName(
     last.personaId,
     providerFromMessageSource(last.llmSource),
   );
-  return `${name} 차례야. ${lastName} 말에 ${pushbackHint(personaId)} 같은 말 반복 말고 구체적으로.`;
+  return `${name} 차례야. ${lastName} 말에 ${pushbackHint(personaId)} 같은 말 반복 말고 구체적으로.${shortHint}`;
 }
 
 /** Gemini API 멀티턴 contents (user/model 교차) */
@@ -122,12 +129,13 @@ export function buildGeminiContents(
   history: DebateMessage[],
   personaId: PersonaId,
   provider: ApiProvider,
+  tokenSaveMode = false,
 ): Array<{ role: "user" | "model"; text: string }> {
   if (history.length === 0) {
     return [
       {
         role: "user",
-        text: `${openingUserMessage(topic, provider)}\n\n${currentTurnUserPrompt(personaId, provider, history)}`,
+        text: `${openingUserMessage(topic, provider)}\n\n${currentTurnUserPrompt(personaId, provider, history, tokenSaveMode)}`,
       },
     ];
   }
@@ -144,7 +152,7 @@ export function buildGeminiContents(
   contents.pop();
   contents.push({
     role: "user",
-    text: currentTurnUserPrompt(personaId, provider, history),
+    text: currentTurnUserPrompt(personaId, provider, history, tokenSaveMode),
   });
 
   return contents;
@@ -156,12 +164,13 @@ export function buildOpenAiChatTurns(
   history: DebateMessage[],
   personaId: PersonaId,
   provider: ApiProvider,
+  tokenSaveMode = false,
 ): ChatTurn[] {
   if (history.length === 0) {
     return [
       {
         role: "user",
-        text: `${openingUserMessage(topic, provider)}\n\n${currentTurnUserPrompt(personaId, provider, history)}`,
+        text: `${openingUserMessage(topic, provider)}\n\n${currentTurnUserPrompt(personaId, provider, history, tokenSaveMode)}`,
       },
     ];
   }
@@ -178,7 +187,7 @@ export function buildOpenAiChatTurns(
   turns.pop();
   turns.push({
     role: "user",
-    text: currentTurnUserPrompt(personaId, provider, history),
+    text: currentTurnUserPrompt(personaId, provider, history, tokenSaveMode),
   });
 
   return turns;
@@ -197,11 +206,18 @@ export function sanitizeTurnOutput(raw: string): string {
   return text.trim();
 }
 
-export function buildDebateRetryHint(quality = false): string {
+export function buildDebateRetryHint(
+  quality = false,
+  tokenSaveMode = false,
+): string {
   if (quality) {
-    return "에세이·가짜 통계·대학 실험 인용 빼. 주제에 닿는 친구 반말로 다시.";
+    return tokenSaveMode
+      ? "에세이·가짜 통계 빼. 1~3문장, 문장 끝까지 짧게 다시."
+      : "에세이·가짜 통계·대학 실험 인용 빼. 주제에 닿는 친구 반말로 다시.";
   }
-  return "지어낸 근거 넣지 마. 검색 없으면 숫자 빼. 친구 반말로 다시.";
+  return tokenSaveMode
+    ? "지어낸 근거 빼. 1~3문장, 중간에 끊지 말고 짧게 다시."
+    : "지어낸 근거 넣지 마. 검색 없으면 숫자 빼. 친구 반말로 다시.";
 }
 
 /** @deprecated 시뮬 호환 — 멀티턴 첫 user 메시지 검증용 */

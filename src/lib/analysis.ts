@@ -198,7 +198,7 @@ export async function analyzeRoundForTimeline(
   topic: string,
   messages: DebateMessage[],
   round: number,
-  options?: { apiKey?: string; model?: string; provider?: ApiProvider },
+  options?: { apiKey?: string; model?: string; provider?: ApiProvider; tokenSaveMode?: boolean },
 ): Promise<Omit<TimelineEvent, "id" | "createdAt"> | null> {
   const roundMessages = getRoundMessages(messages, round);
   if (roundMessages.length < TURNS_PER_ROUND) return null;
@@ -222,7 +222,7 @@ ${historyText}
 {"skip": false, "title": "짧은 제목", "summary": "1~3문장 합의안"}
 
 JSON만 출력하세요.`,
-    320,
+    options?.tokenSaveMode ? 160 : 320,
     options,
   );
 

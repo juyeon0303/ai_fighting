@@ -69,6 +69,7 @@ export interface Debate {
   openaiModel: string | null;
   geminiModel: string | null;
   maxTokenBudget: number;
+  tokenSaveMode: boolean;
   tokensUsed: number;
   endReason: string | null;
   createdAt: string;

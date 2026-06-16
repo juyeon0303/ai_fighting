@@ -18,6 +18,7 @@ export interface PersonaLlmRuntime {
   model: string;
   maxTokenBudget: number | null;
   tokensUsed: number;
+  tokenSaveMode: boolean;
 }
 
 export interface UserApiInput {
@@ -27,6 +28,7 @@ export interface UserApiInput {
   openaiModel?: string;
   geminiModel?: string;
   maxTokenBudget?: number;
+  tokenSaveMode?: boolean;
 }
 
 export function personaProvider(
@@ -103,6 +105,7 @@ export function resolvePersonaLlmRuntime(
   const base = {
     maxTokenBudget: debate.maxTokenBudget,
     tokensUsed: debate.tokensUsed,
+    tokenSaveMode: debate.tokenSaveMode ?? false,
   };
 
   const layout = resolveApiLayout(debate);

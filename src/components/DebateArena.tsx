@@ -40,6 +40,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
   const [apiLayout, setApiLayout] = useState<ApiLayout | null>(null);
   const [tokensUsed, setTokensUsed] = useState(0);
   const [maxTokenBudget, setMaxTokenBudget] = useState(0);
+  const [tokenSaveMode, setTokenSaveMode] = useState(false);
   const [endReason, setEndReason] = useState<string | null>(null);
   const [apiConnectionIssue, setApiConnectionIssue] = useState<
     "key_decrypt_failed" | "key_missing" | null
@@ -72,6 +73,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
       setApiLayout(data.debate.apiLayout ?? null);
       setTokensUsed(data.debate.tokensUsed ?? 0);
       setMaxTokenBudget(data.debate.maxTokenBudget ?? 0);
+      setTokenSaveMode(data.debate.tokenSaveMode ?? false);
       setEndReason(data.debate.endReason ?? null);
       setApiConnectionIssue(data.debate.apiConnectionIssue ?? null);
       setConnected(true);
@@ -140,6 +142,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
         setApiLayout(data.debate.apiLayout ?? null);
         setTokensUsed(data.debate.tokensUsed ?? 0);
         setMaxTokenBudget(data.debate.maxTokenBudget ?? 0);
+        setTokenSaveMode(data.debate.tokenSaveMode ?? false);
         setEndReason(data.debate.endReason ?? null);
         setApiConnectionIssue(data.debate.apiConnectionIssue ?? null);
         setStatus(data.debate.status);
@@ -249,6 +252,12 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                   <>
                     <span>·</span>
                     <span>합의 {timeline.filter((e) => e.type === "consensus").length}건</span>
+                  </>
+                )}
+                {tokenSaveMode && (
+                  <>
+                    <span>·</span>
+                    <span className="text-cyan-400/90">절약 모드</span>
                   </>
                 )}
                 {llmMode === "user_api" && maxTokenBudget > 0 && (

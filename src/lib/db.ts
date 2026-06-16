@@ -52,6 +52,7 @@ function rowToDebate(row: Record<string, unknown>): Debate {
     maxTokenBudget:
       llmMode === "user_api" ? (rawBudget > 0 ? rawBudget : 30_000) : rawBudget,
     tokensUsed: (row.tokens_used as number) ?? 0,
+    tokenSaveMode: (row.token_save_mode as boolean) ?? false,
     endReason: (row.end_reason as string) ?? null,
     encryptedApiKey: (row.encrypted_api_key as string) ?? null,
     encryptedGeminiKey: (row.encrypted_gemini_key as string) ?? null,
@@ -135,6 +136,7 @@ function ensureFileDb(): FileDatabase {
             : 30_000
           : d.maxTokenBudget ?? 0,
       tokensUsed: d.tokensUsed ?? 0,
+      tokenSaveMode: d.tokenSaveMode ?? false,
       endReason: d.endReason ?? null,
     })),
     messages: raw.messages ?? [],
@@ -261,6 +263,7 @@ export async function createDebate(
   }
 
   const maxTokenBudget = Math.max(1_000, userApi.maxTokenBudget ?? 30_000);
+  const tokenSaveMode = userApi.tokenSaveMode ?? false;
   const layout = userApi.layout ?? "gemini_only";
   const openaiModel = normalizeOpenaiModel(userApi.openaiModel);
   const geminiModel = normalizeGeminiModel(userApi.geminiModel);
@@ -284,6 +287,7 @@ export async function createDebate(
       ? encryptApiKey(userApi.geminiKey.trim())
       : null,
     max_token_budget: maxTokenBudget,
+    token_save_mode: tokenSaveMode,
     tokens_used: 0,
   };
 
@@ -336,6 +340,7 @@ export async function createDebate(
       ? encryptApiKey(userApi.geminiKey.trim())
       : null,
     maxTokenBudget,
+    tokenSaveMode,
     tokensUsed: 0,
     endReason: null,
     createdAt: now,

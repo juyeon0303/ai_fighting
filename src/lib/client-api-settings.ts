@@ -16,6 +16,7 @@ export interface SavedApiSettings {
   openaiModel: string;
   geminiModel: string;
   maxTokenBudget: number;
+  tokenSaveMode: boolean;
 }
 
 const STORAGE_KEY = "ai-debate-arena-api-settings";
@@ -42,6 +43,7 @@ export function loadApiSettings(): SavedApiSettings | null {
       ),
       geminiModel: normalizeGeminiModel(parsed.geminiModel),
       maxTokenBudget: parsed.maxTokenBudget ?? DEFAULT_MAX_TOKEN_BUDGET,
+      tokenSaveMode: parsed.tokenSaveMode ?? false,
     };
   } catch {
     return null;

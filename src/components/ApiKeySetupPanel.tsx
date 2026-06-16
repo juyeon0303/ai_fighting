@@ -46,6 +46,8 @@ interface ApiKeySetupPanelProps {
   onGeminiModelChange: (model: string) => void;
   maxTokenBudget: number;
   onMaxTokenBudgetChange: (n: number) => void;
+  tokenSaveMode: boolean;
+  onTokenSaveModeChange: (v: boolean) => void;
   rememberKey: boolean;
   onRememberKeyChange: (v: boolean) => void;
 }
@@ -143,14 +145,16 @@ export function ApiKeySetupPanel({
   onGeminiModelChange,
   maxTokenBudget,
   onMaxTokenBudgetChange,
+  tokenSaveMode,
+  onTokenSaveModeChange,
   rememberKey,
   onRememberKeyChange,
 }: ApiKeySetupPanelProps) {
   const [guideOpen, setGuideOpen] = useState(true);
 
   const budgetGuide = useMemo(
-    () => estimateTokenBudget(maxTokenBudget, layout),
-    [maxTokenBudget, layout],
+    () => estimateTokenBudget(maxTokenBudget, layout, undefined, tokenSaveMode),
+    [maxTokenBudget, layout, tokenSaveMode],
   );
 
   const needsOpenai = layout === "openai_only" || layout === "gpt_vs_gemini";
@@ -364,6 +368,24 @@ export function ApiKeySetupPanel({
             />
           </div>
 
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-cyan-500/25 bg-cyan-500/8 px-3 py-3 text-left transition hover:border-cyan-500/40">
+            <input
+              type="checkbox"
+              checked={tokenSaveMode}
+              onChange={(e) => onTokenSaveModeChange(e.target.checked)}
+              className="mt-0.5 rounded border-white/20"
+            />
+            <span>
+              <span className="text-sm font-medium text-cyan-100/90">
+                토큰절약 모드
+              </span>
+              <span className="mt-1 block text-[11px] leading-relaxed text-white/45">
+                발언을 1~3문장으로 짧게. 문장 중간에 끊기지 않게 끝까지 말하게
+                하고, 토큰 소모를 줄입니다.
+              </span>
+            </span>
+          </label>
+
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 p-3 text-xs leading-relaxed text-amber-100/80">
             <p className="mb-1 font-medium text-amber-200/90">
               토큰 예산 감 잡기
@@ -373,8 +395,8 @@ export function ApiKeySetupPanel({
               1턴 ≈ {budgetGuide.tokensPerTurn.toLocaleString()} 토큰 (발언 1개).
               GE·MI·NI 한 바퀴(발언 3개)마다 합의안 ≈{" "}
               {(budgetGuide.tokensPerTurn * 3).toLocaleString()} 토큰.
-              예: 30,000 토큰이면 발언 약 {estimateTokenBudget(30_000, layout).estimatedTurns}개 ·
-              합의 약 {estimateTokenBudget(30_000, layout).estimatedRounds}회.
+              예: 30,000 토큰이면 발언 약 {estimateTokenBudget(30_000, layout, undefined, tokenSaveMode).estimatedTurns}개 ·
+              합의 약 {estimateTokenBudget(30_000, layout, undefined, tokenSaveMode).estimatedRounds}회.
             </p>
           </div>
 
@@ -404,6 +426,7 @@ export function settingsFromPanel(
   openaiModel: string,
   geminiModel: string,
   maxTokenBudget: number,
+  tokenSaveMode: boolean,
   rememberKey: boolean,
 ): SavedApiSettings | null {
   if (!rememberKey) return null;
@@ -415,5 +438,6 @@ export function settingsFromPanel(
     openaiModel,
     geminiModel,
     maxTokenBudget,
+    tokenSaveMode,
   };
 }

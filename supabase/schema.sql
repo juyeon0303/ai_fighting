@@ -21,6 +21,7 @@ create table if not exists debates (
   encrypted_api_key text,
   encrypted_gemini_key text,
   max_token_budget int not null default 0,
+  token_save_mode boolean not null default false,
   tokens_used int not null default 0,
   end_reason text,
   created_at timestamptz not null default now(),

@@ -22,6 +22,7 @@ export function TopicForm() {
   const [openaiModel, setOpenaiModel] = useState(DEFAULT_OPENAI_MODEL);
   const [geminiModel, setGeminiModel] = useState(DEFAULT_GEMINI_MODEL);
   const [maxTokenBudget, setMaxTokenBudget] = useState(DEFAULT_MAX_TOKEN_BUDGET);
+  const [tokenSaveMode, setTokenSaveMode] = useState(false);
   const [rememberKey, setRememberKey] = useState(true);
   const router = useRouter();
 
@@ -34,6 +35,7 @@ export function TopicForm() {
     setOpenaiModel(saved.openaiModel);
     setGeminiModel(saved.geminiModel);
     setMaxTokenBudget(saved.maxTokenBudget);
+    setTokenSaveMode(saved.tokenSaveMode ?? false);
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -47,6 +49,7 @@ export function TopicForm() {
       openaiModel,
       geminiModel,
       maxTokenBudget,
+      tokenSaveMode,
     });
     if (err) {
       alert(err);
@@ -60,6 +63,7 @@ export function TopicForm() {
       openaiModel,
       geminiModel,
       maxTokenBudget,
+      tokenSaveMode,
       rememberKey,
     );
     if (toSave) saveApiSettings(toSave);
@@ -78,6 +82,7 @@ export function TopicForm() {
             openaiModel,
             geminiModel,
             maxTokenBudget,
+            tokenSaveMode,
           },
         }),
       });
@@ -120,6 +125,8 @@ export function TopicForm() {
         onGeminiModelChange={setGeminiModel}
         maxTokenBudget={maxTokenBudget}
         onMaxTokenBudgetChange={setMaxTokenBudget}
+        tokenSaveMode={tokenSaveMode}
+        onTokenSaveModeChange={setTokenSaveMode}
         rememberKey={rememberKey}
         onRememberKeyChange={setRememberKey}
       />
