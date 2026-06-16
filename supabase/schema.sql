@@ -56,11 +56,15 @@ create table if not exists debate_reports (
   consensus_points jsonb not null default '[]',
   pro_arguments jsonb not null default '[]',
   con_arguments jsonb not null default '[]',
+  ember_arguments jsonb not null default '[]',
   unresolved_issues jsonb not null default '[]',
   final_conclusion text not null,
   recommendation text not null,
   generated_at timestamptz not null default now()
 );
+
+-- 기존 DB: debate_reports에 ember_arguments 컬럼 추가
+-- alter table debate_reports add column if not exists ember_arguments jsonb not null default '[]';
 
 -- 기존 DB: debate_messages에 llm_source 컬럼 추가
 -- alter table debate_messages add column if not exists llm_source text check (llm_source is null or llm_source in ('openai', 'gemini', 'engine'));

@@ -47,6 +47,7 @@ export interface DebateReport {
   consensusPoints: string[];
   proArguments: string[];
   conArguments: string[];
+  emberArguments: string[];
   unresolvedIssues: string[];
   finalConclusion: string;
   recommendation: string;

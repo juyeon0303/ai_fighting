@@ -326,6 +326,8 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                         ? "토큰 예산 종료"
                         : endReason === "api_quota"
                           ? "API 한도 종료"
+                          : endReason === "api_rate_limit"
+                            ? "API 호출 제한 (일시)"
                           : endReason === "invalid_api_key"
                             ? "API 키 오류"
                             : endReason === "empty_turn"

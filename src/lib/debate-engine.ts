@@ -41,6 +41,7 @@ debateEvents.setMaxListeners(100);
 
 const turnInflight = new Map<string, Promise<DebateMessage | null>>();
 const emptyTurnStreak = new Map<string, number>();
+const rateLimitStreak = new Map<string, number>();
 const finalizing = new Set<string>();
 let workerStarted = false;
 let workerTimer: ReturnType<typeof setInterval> | null = null;
@@ -178,6 +179,18 @@ async function processDebateTurnInner(
       await endDebate(debateId, "api_quota");
       return null;
     }
+    if (turn.stopReason === "rate_limit") {
+      const streak = (rateLimitStreak.get(debateId) ?? 0) + 1;
+      rateLimitStreak.set(debateId, streak);
+      console.warn(
+        `[debate ${debateId}] Gemini rate limited — retry later (${streak}/12)`,
+      );
+      if (streak >= 12) {
+        rateLimitStreak.delete(debateId);
+        await endDebate(debateId, "api_rate_limit");
+      }
+      return null;
+    }
     if (turn.stopReason === "missing_key") {
       await endDebate(debateId, "invalid_api_key");
       return null;
@@ -208,6 +221,7 @@ async function processDebateTurnInner(
     }
 
     emptyTurnStreak.delete(debateId);
+    rateLimitStreak.delete(debateId);
 
     const latest = await getDebateMessages(debateId);
     if (latest.length !== messageCountAtStart) {

@@ -58,6 +58,10 @@ export function DebateReportPanel({
     "cipher",
     personaProvider(apiLayout ?? "gemini_only", "cipher"),
   );
+  const emberName = personaDisplayName(
+    "ember",
+    personaProvider(apiLayout ?? "gemini_only", "ember"),
+  );
   if (!visible) return null;
 
   return (
@@ -105,9 +109,13 @@ export function DebateReportPanel({
             </div>
 
             <Section title="중간 합의 포인트" items={report.consensusPoints} color="#d4af6a" />
-            <Section title={`${atlasName} 관점 (큰 그림)`} items={report.proArguments} color="#d4af6a" />
-            <Section title={`${cipherName} 관점 (논리)`} items={report.conArguments} color="#4db6a0" />
-            <Section title="미해결 쟁점" items={report.unresolvedIssues} color="#94a3b8" />
+            <Section title={`${atlasName} 관점`} items={report.proArguments} color="#d4af6a" />
+            <Section title={`${cipherName} 관점`} items={report.conArguments} color="#4db6a0" />
+            <Section
+              title={`${emberName} 관점`}
+              items={report.emberArguments ?? []}
+              color="#c9887a"
+            />
 
             <div className="rounded-2xl border border-[var(--brand-jade)]/20 bg-[var(--brand-jade)]/8 p-4">
               <h3 className="mb-2 text-xs font-semibold tracking-[0.2em] text-[var(--brand-jade)]">
@@ -115,15 +123,6 @@ export function DebateReportPanel({
               </h3>
               <p className="text-sm leading-relaxed text-white/85">
                 {report.finalConclusion}
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-[var(--brand-gold)]/15 bg-[var(--brand-gold)]/5 p-4">
-              <h3 className="mb-2 text-xs font-semibold tracking-[0.2em] text-[var(--brand-gold)]/80">
-                권고안
-              </h3>
-              <p className="text-sm leading-relaxed text-white/85">
-                {report.recommendation}
               </p>
             </div>
           </div>

@@ -23,6 +23,50 @@ function namesSummary(messages: DebateMessage[]): string {
   }).join("·");
 }
 
+function personaSummaryBullets(
+  msgs: DebateMessage[],
+  maxItems = 3,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const msg of [...msgs].reverse()) {
+    const raw = msg.content.trim().replace(/\s+/g, " ");
+    if (raw.length < 10) continue;
+
+    const key = raw.slice(0, 28);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    let line = raw;
+    if (line.length > 110) {
+      const cut = line.slice(0, 110);
+      const breakAt = Math.max(cut.lastIndexOf(" "), cut.lastIndexOf("."));
+      line = `${(breakAt > 40 ? cut.slice(0, breakAt) : cut).trim()}…`;
+    }
+
+    out.push(line);
+    if (out.length >= maxItems) break;
+  }
+
+  return out;
+}
+
+function isBoilerplateReportText(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  return (
+    /추가 근거와 사례|다시 토론을 이어|논거를 더 쌓|비교 기준.*통일|개인 취향 차이|실행 권고|권한다\.?$/.test(
+      t,
+    ) ||
+    t.length < 8
+  );
+}
+
+function cleanReportItems(items: string[] | undefined): string[] {
+  return (items ?? []).map((s) => s.trim()).filter((s) => !isBoilerplateReportText(s));
+}
+
 function getRoundMessages(messages: DebateMessage[], round: number): DebateMessage[] {
   return messages.filter((m) => m.round === round);
 }
@@ -48,6 +92,8 @@ function endReasonLabel(endReason?: string | null): string {
       return "API 키 오류";
     case "api_quota":
       return "API 사용 한도 초과";
+    case "api_rate_limit":
+      return "API 호출 일시 제한";
     case "max_rounds":
       return "토론 길이 한도";
     case "empty_turn":
@@ -144,15 +190,11 @@ function buildOfflineReport(
       consensusPoints: [],
       proArguments: [],
       conArguments: [],
-      unresolvedIssues: [why],
+      emberArguments: [],
+      unresolvedIssues: [],
       finalConclusion:
-        "본격적인 논의가 진행되지 않아 승패나 우위를 판단할 수 없습니다.",
-      recommendation:
-        endReason === "invalid_api_key"
-          ? "OpenAI API 키가 유효한지 확인하고 새 토론을 시작해 보세요."
-          : endReason === "token_budget"
-            ? "토큰 예산을 30,000 이상으로 설정한 뒤 다시 시도해 보세요."
-            : "설정을 확인한 뒤 새 토론을 시작해 보세요.",
+        "본격적인 논의가 진행되지 않아 결론을 내리기 어렵습니다.",
+      recommendation: "",
     };
   }
 
@@ -173,24 +215,17 @@ function buildOfflineReport(
   return {
     title: `${topic} — 대화 종합 보고서`,
     executiveSummary: `총 ${messages.length}개 발언, 타임라인 ${timeline.length}건을 거치며 ${topicBrief}를 다뤘다. ${namesSummary(messages)}가 각자 시각으로 대화했다.`,
-    consensusPoints:
+    consensusPoints: cleanReportItems(
       consensusFromTimeline.length > 0
         ? consensusFromTimeline
-        : emberMsgs.slice(-2).map((m) => m.content.slice(0, 120)),
-    proArguments: atlasMsgs.slice(-3).map((m) => m.content),
-    conArguments: cipherMsgs.slice(-3).map((m) => m.content),
-    unresolvedIssues:
-      sideA && sideB
-        ? [
-            `${sideA}와 ${sideB}의 비교 기준(맛·가격·상황) 통일 필요`,
-            "개인 취향 차이를 어떻게 반영할지 미정",
-          ]
-        : ["추가 근거와 사례가 더 필요함"],
+        : personaSummaryBullets(emberMsgs, 2),
+    ),
+    proArguments: personaSummaryBullets(atlasMsgs, 3),
+    conArguments: personaSummaryBullets(cipherMsgs, 3),
+    emberArguments: personaSummaryBullets(emberMsgs, 3),
+    unresolvedIssues: [],
     finalConclusion,
-    recommendation:
-      sideA && sideB
-        ? `상황별로 ${sideA}와 ${sideB}를 골라 쓰는 게 현실적이다.`
-        : "논거를 더 쌓은 뒤 다시 토론을 이어가는 것을 권한다.",
+    recommendation: "",
   };
 }
 
@@ -274,6 +309,12 @@ export async function generateFinalReport(
       messages.find((m) => normalizePersonaId(m.personaId) === "cipher")?.llmSource,
     ),
   );
+  const emberName = personaDisplayName(
+    "ember",
+    providerFromMessageSource(
+      messages.find((m) => normalizePersonaId(m.personaId) === "ember")?.llmSource,
+    ),
+  );
 
   const timelineText = timeline
     .map((e) => `- [${e.type}] ${e.title}: ${e.summary}`)
@@ -288,16 +329,21 @@ ${historyText || "(없음)"}
 타임라인 합의:
 ${timelineText || "(없음)"}
 
-위 대화의 최종 보고서를 JSON으로 작성하세요. 찬성/반대/중립 분류 없이 자·강·세 각자 관점으로 정리하세요.
+위 대화의 최종 보고서를 JSON으로 작성하세요.
+- 찬성/반대/중립 분류 금지. ${atlasName}·${cipherName}·${emberName} 세 사람 관점을 각각 정리.
+- 발언문 그대로 복사 금지. 각 항목은 한 줄 요약(재서술).
+- "다시 토론을 권한다", "추가 근거가 필요" 같은 형식적·빈말 금지.
+- unresolvedIssues, recommendation은 빈 배열/빈 문자열로 두세요.
 {
   "title": "보고서 제목",
   "executiveSummary": "3~4문장 요약",
-  "consensusPoints": ["합의점1", "합의점2"],
-  "proArguments": ["${atlasName}(큰 그림) 핵심1", "${atlasName} 핵심2"],
-  "conArguments": ["${cipherName}(논리) 핵심1", "${cipherName} 핵심2"],
-  "unresolvedIssues": ["미해결 쟁점1"],
+  "consensusPoints": ["실제로 맞춰진 점만, 없으면 []"],
+  "proArguments": ["${atlasName} 핵심1", "${atlasName} 핵심2"],
+  "conArguments": ["${cipherName} 핵심1", "${cipherName} 핵심2"],
+  "emberArguments": ["${emberName} 핵심1", "${emberName} 핵심2"],
+  "unresolvedIssues": [],
   "finalConclusion": "최종 결론 2~3문장",
-  "recommendation": "실행 권고안 1~2문장"
+  "recommendation": ""
 }
 
 JSON만 출력하세요.`,
@@ -309,15 +355,19 @@ JSON만 출력하세요.`,
     try {
       const parsed = JSON.parse(llmResult.replace(/```json|```/g, "").trim());
       if (parsed.executiveSummary) {
+        const recommendation = String(parsed.recommendation ?? "").trim();
         return {
           title: parsed.title ?? `${topic} — 토론 종합 보고서`,
           executiveSummary: parsed.executiveSummary,
-          consensusPoints: parsed.consensusPoints ?? [],
-          proArguments: parsed.proArguments ?? [],
-          conArguments: parsed.conArguments ?? [],
-          unresolvedIssues: parsed.unresolvedIssues ?? [],
+          consensusPoints: cleanReportItems(parsed.consensusPoints),
+          proArguments: cleanReportItems(parsed.proArguments),
+          conArguments: cleanReportItems(parsed.conArguments),
+          emberArguments: cleanReportItems(parsed.emberArguments),
+          unresolvedIssues: cleanReportItems(parsed.unresolvedIssues),
           finalConclusion: parsed.finalConclusion ?? "",
-          recommendation: parsed.recommendation ?? "",
+          recommendation: isBoilerplateReportText(recommendation)
+            ? ""
+            : recommendation,
         };
       }
     } catch {

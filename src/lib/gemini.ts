@@ -28,7 +28,8 @@ export function isLikelyGeminiKey(key: string): boolean {
 
 function mapGeminiError(status: number): LlmStopReason {
   if (status === 401 || status === 403) return "auth";
-  if (status === 429 || status === 402) return "quota";
+  if (status === 402) return "quota";
+  if (status === 429) return "rate_limit";
   return null;
 }
 
@@ -179,6 +180,7 @@ export async function requestGeminiChat(
   let lastError = "";
   let sawAuthError = false;
   let sawQuotaError = false;
+  let sawRateLimitError = false;
 
   const apiContents = contents.map((c) => ({
     role: c.role,
@@ -220,6 +222,7 @@ export async function requestGeminiChat(
             );
             if (stop === "auth") sawAuthError = true;
             if (stop === "quota") sawQuotaError = true;
+            if (stop === "rate_limit") sawRateLimitError = true;
             continue;
           }
 
@@ -244,6 +247,14 @@ export async function requestGeminiChat(
 
   if (sawQuotaError) {
     return { content: null, tokensUsed: 0, stopReason: "quota", truncated: false };
+  }
+  if (sawRateLimitError) {
+    return {
+      content: null,
+      tokensUsed: 0,
+      stopReason: "rate_limit",
+      truncated: false,
+    };
   }
   if (sawAuthError) {
     return { content: null, tokensUsed: 0, stopReason: "auth", truncated: false };

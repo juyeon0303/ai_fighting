@@ -35,7 +35,10 @@ export async function verifyUserApiKeys(
       if (status === 401 || status === 403) {
         return "OpenAI API 키가 거부되었습니다. platform.openai.com에서 키를 확인하세요.";
       }
-      if (status === 429 || status === 402) {
+      if (status === 429) {
+        return "OpenAI API 호출이 일시적으로 제한됩니다. 1~2분 후 다시 시도하세요.";
+      }
+      if (status === 402) {
         return "OpenAI API 한도가 초과되었습니다.";
       }
       return "OpenAI API 연결 실패 — 키와 모델(gpt-5.4-mini 등)을 확인하세요.";
@@ -57,8 +60,11 @@ export async function verifyUserApiKeys(
     if (result.stopReason === "auth") {
       return "Gemini API 키가 거부되었습니다. aistudio.google.com → API Keys에서 새 키를 만들고, 앞뒤 공백 없이 전체를 붙여넣으세요. (AIza 또는 AQ. 로 시작)";
     }
+    if (result.stopReason === "rate_limit") {
+      return "Gemini API 호출이 일시적으로 제한됩니다. 1~2분 후 다시 시도하세요.";
+    }
     if (result.stopReason === "quota") {
-      return "Gemini API 한도가 초과되었습니다.";
+      return "Gemini API 사용 한도가 초과되었습니다.";
     }
     if (!result.content) {
       return `Gemini API 연결 실패 (모델: ${model}). 키 형식(AIza/AQ.)과 모델을 확인하세요.`;

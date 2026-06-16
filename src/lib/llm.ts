@@ -20,7 +20,12 @@ import {
   maxOutputTokens,
 } from "./debate-turn-budget";
 
-export type LlmStopReason = "auth" | "quota" | "missing_key" | null;
+export type LlmStopReason =
+  | "auth"
+  | "quota"
+  | "rate_limit"
+  | "missing_key"
+  | null;
 
 export interface TurnResult {
   content: string;
@@ -58,7 +63,8 @@ function mapApiError(error: unknown): LlmStopReason {
       : null;
 
   if (status === 401 || status === 403) return "auth";
-  if (status === 402 || status === 429) return "quota";
+  if (status === 402) return "quota";
+  if (status === 429) return "rate_limit";
   return null;
 }
 
