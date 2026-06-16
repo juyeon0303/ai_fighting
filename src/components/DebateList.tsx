@@ -12,7 +12,7 @@ const STATUS_LABEL: Record<Debate["status"], string> = {
 };
 
 const STATUS_COLOR: Record<Debate["status"], string> = {
-  active: "bg-emerald-500/20 text-emerald-400",
+  active: "bg-[var(--brand-jade)]/15 text-[var(--brand-jade)]",
   paused: "bg-amber-500/20 text-amber-400",
   ended: "bg-white/10 text-white/50",
 };
@@ -35,14 +35,14 @@ export function DebateList() {
   if (loading) {
     return (
       <div className="flex justify-center py-12">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-violet-400" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--brand-gold)]/20 border-t-[var(--brand-gold)]" />
       </div>
     );
   }
 
   if (debates.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-white/8 py-10 text-center text-xs text-white/30">
+      <div className="rounded-xl border border-dashed border-[var(--brand-gold)]/12 py-10 text-center text-xs text-[var(--brand-paper)]/30">
         아직 토론이 없습니다.
       </div>
     );
@@ -53,7 +53,7 @@ export function DebateList() {
       {debates.map((debate) => (
         <div
           key={debate.id}
-          className="group flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5 transition hover:border-white/15 hover:bg-white/[0.04]"
+          className="group flex items-center gap-2 rounded-xl border border-[var(--brand-gold)]/10 bg-[var(--brand-gold)]/[0.02] px-3 py-2.5 transition hover:border-[var(--brand-gold)]/20 hover:bg-[var(--brand-gold)]/[0.04]"
         >
           <Link
             href={`/debate/${debate.id}`}

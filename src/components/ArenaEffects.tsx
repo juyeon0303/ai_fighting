@@ -15,7 +15,7 @@ export function ArenaEffects({
 }: ArenaEffectsProps) {
   const color = lastPersonaId
     ? PERSONA_META[normalizePersonaId(lastPersonaId)].color
-    : "#8b5cf6";
+    : "#d4af6a";
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">

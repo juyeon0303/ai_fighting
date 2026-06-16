@@ -23,9 +23,9 @@ export function DebateTimeline({ events, highlightId }: DebateTimelineProps) {
 
   return (
     <>
-      <aside className="flex h-full w-72 shrink-0 flex-col border-l border-white/8 bg-black/20">
-        <div className="border-b border-white/8 px-4 py-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-white/40">
+      <aside className="flex h-full w-72 shrink-0 flex-col border-l border-[var(--brand-gold)]/10 bg-black/20">
+        <div className="border-b border-[var(--brand-gold)]/10 px-4 py-3">
+          <h2 className="text-xs font-semibold tracking-[0.2em] text-[var(--brand-gold)]/50">
             합의안
           </h2>
           <p className="mt-0.5 text-[11px] text-white/25">
@@ -36,7 +36,7 @@ export function DebateTimeline({ events, highlightId }: DebateTimelineProps) {
         <div className="flex-1 overflow-y-auto px-3 py-4">
           {consensusEvents.length === 0 ? (
             <div className="flex h-full items-center justify-center px-2 text-center text-xs text-white/25">
-              GE·MI·NI가 한 바퀴 돌면
+              자·강·세가 한 바퀴 돌면
               <br />
               합의안이 여기에 쌓입니다
             </div>
@@ -87,7 +87,7 @@ export function DebateTimeline({ events, highlightId }: DebateTimelineProps) {
           role="presentation"
         >
           <div
-            className="report-panel max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-white/10 bg-[#12101c] p-6 shadow-2xl sm:rounded-3xl"
+            className="report-panel max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-[var(--brand-gold)]/12 bg-[var(--brand-ink)] p-6 shadow-2xl sm:rounded-3xl"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"

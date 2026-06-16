@@ -10,7 +10,7 @@ import {
 export type ChatTurn = { role: "user" | "assistant"; text: string };
 
 const META_LINE =
-  /^\s*\*.*\*?\s*$|casual tone|banmal|Yes\.|^\s*-\s*(GE|MI|NI)\s*:/i;
+  /^\s*\*.*\*?\s*$|casual tone|banmal|Yes\.|^\s*-\s*(GE|MI|NI|자|강|세|J|K|S)\s*:/i;
 
 /** 에세이·꾸며낸 근거 패턴 — 2개 이상이면 재생성 */
 const ESSAY_RED_FLAGS: RegExp[] = [
@@ -34,7 +34,7 @@ export function isLowQualityTurn(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
   if ((t.match(/결국/g) ?? []).length >= 2) return true;
-  if (/^GE\s*의견에\s*동의|^MI\s*말이\s*맞|^맞아,?\s*MI/.test(t)) return true;
+  if (/^자\s*의견에\s*동의|^강\s*말이\s*맞|^맞아,?\s*강/.test(t)) return true;
 
   let flags = 0;
   for (const re of ESSAY_RED_FLAGS) {
@@ -87,7 +87,7 @@ export function personaSystemInstruction(
     "말투: '근데', '솔직히', '아니', '그치만', '~거든' 같은 구어. 매번 같은 시작·패턴 반복 금지.",
     "항상 직전 말(다른 사람)부터 반응하고, 그다음에 네 의견.",
     "네가 예전에 한 말을 반박하거나, 자기 말을 남 말인 척 만들지 마.",
-    "GE→MI→NI 순서로 한 명씩만 말함 — 같은 사람이 두 번 연속 말하지 않음.",
+    `${personaNamesLabel(provider)} 순서(자→강→세)로 한 명씩만 말함 — 같은 사람이 두 번 연속 말하지 않음.`,
     "사실·숫자는 검색으로 확인한 것만. 모르면 '잘 모르겠는데'만.",
     "대학·실험·%·연구 인용 대잔치 금지. 철학·심리 용어로 분위기만 잡지 마.",
     "빈동의('동의해'만) 금지 — 동의해도 이유 한 줄은 붙여.",
@@ -97,7 +97,7 @@ export function personaSystemInstruction(
 }
 
 function openingUserMessage(topic: string, provider: ApiProvider): string {
-  return `주제: 「${topic}」\n\n${personaNamesLabel(provider)} 셋이 원탁에 GE→MI→NI 순서로 한 명씩 말해. 틀리거나 과한 말엔 바로 반박해.`;
+  return `주제: 「${topic}」\n\n${personaNamesLabel(provider)} 셋이 원탁에 자→강→세 순서로 한 명씩 말해. 틀리거나 과한 말엔 바로 반박해.`;
 }
 
 /** 화자별 role — 내 말만 model, 남 말은 user+[이름] */
@@ -224,7 +224,7 @@ export function sanitizeTurnOutput(raw: string): string {
     .filter((l) => l.length > 0 && !META_LINE.test(l));
 
   let text = lines.join(" ").replace(/\s+/g, " ").trim();
-  text = text.replace(/^(?:GE|MI|NI|G|P|T)\s*:\s*/i, "");
+  text = text.replace(/^(?:GE|MI|NI|자|강|세|G|P|T|J|K|S)\s*:\s*/i, "");
   text = scrubLowQualityPhrases(text);
   return text.trim();
 }

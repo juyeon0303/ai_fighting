@@ -27,10 +27,9 @@ import {
   isTurnComplete,
 } from "./debate-turn-budget";
 import {
-  DEBATE_TURN_ORDER,
   effectiveTurnIntervalMs,
   getNextPersona,
-  normalizePersonaId,
+  canAppendTurn,
   TURNS_PER_ROUND,
   WORKER_TICK_MS,
 } from "./personas";
@@ -153,28 +152,11 @@ async function processDebateTurnInner(
     }
 
     const personaId = getNextPersona(round, messageCountAtStart);
-    const lastSpeaker =
-      messages.length > 0
-        ? normalizePersonaId(messages[messages.length - 1]!.personaId)
-        : null;
-    if (lastSpeaker && lastSpeaker === personaId) {
+    if (!canAppendTurn(messages, personaId)) {
       console.warn(
-        `[debate ${debateId}] blocked consecutive ${personaId} turn (count=${messageCountAtStart})`,
+        `[debate ${debateId}] blocked invalid turn slot ${personaId} (count=${messageCountAtStart})`,
       );
       return null;
-    }
-    if (lastSpeaker) {
-      const lastIdx = DEBATE_TURN_ORDER.indexOf(lastSpeaker);
-      const expectedAfterLast =
-        lastIdx >= 0
-          ? DEBATE_TURN_ORDER[(lastIdx + 1) % TURNS_PER_ROUND]
-          : personaId;
-      if (expectedAfterLast !== personaId) {
-        console.warn(
-          `[debate ${debateId}] turn order mismatch: expected ${expectedAfterLast}, got ${personaId}`,
-        );
-        return null;
-      }
     }
 
     const runtime = resolvePersonaLlmRuntime(debate, personaId);
@@ -234,11 +216,10 @@ async function processDebateTurnInner(
       return null;
     }
 
-    const expectedPersona = getNextPersona(
-      Math.floor(messageCountAtStart / TURNS_PER_ROUND) + 1,
-      messageCountAtStart,
-    );
-    if (expectedPersona !== personaId) {
+    if (!canAppendTurn(latest, personaId)) {
+      console.warn(
+        `[debate ${debateId}] save blocked: slot taken or wrong speaker ${personaId}`,
+      );
       return null;
     }
 

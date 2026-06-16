@@ -168,7 +168,7 @@ function buildOfflineReport(
     lastEmber ??
     (sideA && sideB
       ? `${sideA}와 ${sideB}에 단일 정답은 없고, 시각에 따라 해석이 갈린다.`
-      : `${topic}에 대해 천재 3명이 각자 시각을 냈으나 아직 명확한 결론은 없다.`);
+      : `${topic}에 대해 자·강·세가 각자 시각을 냈으나 아직 명확한 결론은 없다.`);
 
   return {
     title: `${topic} — 대화 종합 보고서`,
@@ -216,7 +216,7 @@ export async function analyzeRoundForTimeline(
 최근 발언:
 ${historyText}
 
-위 대화에서 천재 3명이 공통으로 인정할 수 있는 "중간 합의안"을 JSON으로 답하세요.
+위 대화에서 자·강·세가 공통으로 인정할 수 있는 "중간 합의안"을 JSON으로 답하세요.
 합의가 없으면 skip: true. 찬성/반대/중립 분류는 쓰지 마세요.
 
 {"skip": false, "title": "짧은 제목", "summary": "1~3문장 합의안"}
@@ -288,7 +288,7 @@ ${historyText || "(없음)"}
 타임라인 합의:
 ${timelineText || "(없음)"}
 
-위 대화의 최종 보고서를 JSON으로 작성하세요. 찬성/반대/중립 분류 없이 천재별 관점으로 정리하세요.
+위 대화의 최종 보고서를 JSON으로 작성하세요. 찬성/반대/중립 분류 없이 자·강·세 각자 관점으로 정리하세요.
 {
   "title": "보고서 제목",
   "executiveSummary": "3~4문장 요약",

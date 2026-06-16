@@ -5,7 +5,7 @@ import { isSupabaseEnabled } from "@/lib/supabase";
 export async function GET() {
   return NextResponse.json({
     status: "ok",
-    service: "ai-debate-arena",
+    service: "jagangsecheon",
     storage: getStorageMode(),
     supabase: isSupabaseEnabled(),
     buildSha: process.env.NEXT_PUBLIC_BUILD_SHA ?? "local",

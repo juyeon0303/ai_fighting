@@ -94,12 +94,12 @@ function KeyField({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            className={`w-full rounded-lg border bg-black/20 px-3 py-2 pr-16 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-white/20 ${
+            className={`w-full rounded-lg border bg-black/20 px-3 py-2 pr-16 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[var(--brand-gold)]/25 ${
               value.trim()
                 ? keyOk
-                  ? "border-emerald-500/30"
+                  ? "border-[var(--brand-jade)]/30"
                   : "border-amber-500/30"
-                : "border-white/10"
+                : "border-[var(--brand-gold)]/12"
             }`}
             autoComplete="off"
             spellCheck={false}
@@ -156,7 +156,7 @@ export function ApiKeySetupPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex rounded-lg border border-white/10 bg-black/15 p-0.5">
+      <div className="flex rounded-lg border border-[var(--brand-gold)]/12 bg-black/15 p-0.5">
         {LAYOUT_OPTIONS.map((opt) => (
           <button
             key={opt.id}
@@ -164,8 +164,8 @@ export function ApiKeySetupPanel({
             onClick={() => onLayoutChange(opt.id)}
             className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
               layout === opt.id
-                ? "bg-white/10 text-white"
-                : "text-white/45 hover:text-white/70"
+                ? "bg-[var(--brand-gold)]/15 text-[var(--brand-gold-light)]"
+                : "text-[var(--brand-paper)]/45 hover:text-[var(--brand-paper)]/70"
             }`}
           >
             {opt.title}

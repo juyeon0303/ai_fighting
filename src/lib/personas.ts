@@ -1,4 +1,4 @@
-import type { ApiLayout, ApiProvider, Persona, PersonaId } from "./types";
+import type { ApiLayout, ApiProvider, DebateMessage, Persona, PersonaId } from "./types";
 import { personaProvider } from "./debate-llm-config";
 
 export const DEBATE_TURN_ORDER: PersonaId[] = ["atlas", "cipher", "ember"];
@@ -12,15 +12,15 @@ export function effectiveTurnIntervalMs(storedMs: number): number {
 }
 
 const GEMINI_NAMES: Record<PersonaId, string> = {
-  atlas: "GE",
-  cipher: "MI",
-  ember: "NI",
+  atlas: "자",
+  cipher: "강",
+  ember: "세",
 };
 
 const GPT_NAMES: Record<PersonaId, string> = {
-  atlas: "G",
-  cipher: "P",
-  ember: "T",
+  atlas: "J",
+  cipher: "K",
+  ember: "S",
 };
 
 export const PERSONA_META: Record<
@@ -29,18 +29,18 @@ export const PERSONA_META: Record<
 > = {
   atlas: {
     role: "원리·큰 그림",
-    color: "#f59e0b",
-    emoji: "🧑",
+    color: "#d4af6a",
+    emoji: "🜁",
   },
   cipher: {
     role: "논리·구조",
-    color: "#8b5cf6",
-    emoji: "🧠",
+    color: "#4db6a0",
+    emoji: "🜂",
   },
   ember: {
     role: "비유·직관",
-    color: "#06b6d4",
-    emoji: "💡",
+    color: "#c9887a",
+    emoji: "🜃",
   },
 };
 
@@ -87,6 +87,29 @@ export function getNextPersona(_round: number, messageCount: number): PersonaId 
   return DEBATE_TURN_ORDER[messageCount % TURNS_PER_ROUND];
 }
 
+/** 저장 직전·턴 시작 시 화자 순서 검증 (다중 워커 레이스 방지) */
+export function canAppendTurn(
+  messages: DebateMessage[],
+  personaId: PersonaId,
+): boolean {
+  const count = messages.length;
+  const expected = getNextPersona(
+    Math.floor(count / TURNS_PER_ROUND) + 1,
+    count,
+  );
+  if (expected !== personaId) return false;
+
+  if (count === 0) return true;
+
+  const last = normalizePersonaId(messages[count - 1]!.personaId);
+  if (last === personaId) return false;
+
+  const lastIdx = DEBATE_TURN_ORDER.indexOf(last);
+  if (lastIdx < 0) return true;
+
+  return DEBATE_TURN_ORDER[(lastIdx + 1) % TURNS_PER_ROUND] === personaId;
+}
+
 export function getPersona(
   id: string,
   provider: ApiProvider = "gemini",
@@ -110,7 +133,7 @@ export function geniusLens(personaId: PersonaId): string {
 
 /** @deprecated provider 지정 시 getPersona(id, provider) 사용 */
 export const PERSONAS: Record<PersonaId, Persona> = {
-  atlas: { id: "atlas", name: "GE", ...PERSONA_META.atlas },
-  cipher: { id: "cipher", name: "MI", ...PERSONA_META.cipher },
-  ember: { id: "ember", name: "NI", ...PERSONA_META.ember },
+  atlas: { id: "atlas", name: "자", ...PERSONA_META.atlas },
+  cipher: { id: "cipher", name: "강", ...PERSONA_META.cipher },
+  ember: { id: "ember", name: "세", ...PERSONA_META.ember },
 };

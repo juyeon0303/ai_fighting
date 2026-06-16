@@ -247,7 +247,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
 
   return (
     <div className="relative flex h-full flex-col">
-      <header className="relative z-10 shrink-0 border-b border-white/8 px-6 py-4">
+      <header className="relative z-10 shrink-0 border-b border-[var(--brand-gold)]/10 px-6 py-4">
         <div className="relative flex items-start justify-between gap-4">
             <div>
               <h1 className="text-lg font-bold text-white">{topic}</h1>
@@ -258,10 +258,10 @@ export function DebateArena({ debateId }: DebateArenaProps) {
             )}
               <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-white/40">
                 <span
-                  className={`inline-flex items-center gap-1.5 ${connected ? "text-emerald-400" : "text-white/30"}`}
+                  className={`inline-flex items-center gap-1.5 ${connected ? "text-[var(--brand-jade)]" : "text-white/30"}`}
                 >
                   <span
-                    className={`h-1.5 w-1.5 rounded-full ${connected ? "animate-pulse bg-emerald-400" : "bg-white/30"}`}
+                    className={`h-1.5 w-1.5 rounded-full ${connected ? "animate-pulse bg-[var(--brand-jade)]" : "bg-white/30"}`}
                   />
                   {connected ? "실시간 연결" : "연결 끊김"}
                 </span>
@@ -282,7 +282,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                 {tokenSaveMode && (
                   <>
                     <span>·</span>
-                    <span className="text-cyan-400/90">절약 모드</span>
+                    <span className="text-[var(--brand-jade)]/90">절약 모드</span>
                   </>
                 )}
                 {llmMode === "user_api" && maxTokenBudget > 0 && (
@@ -351,7 +351,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
               {(report || reportStatus === "generating") && (
                 <button
                   onClick={() => setShowReport(true)}
-                  className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-300 transition hover:bg-violet-500/20"
+                  className="rounded-lg border border-[var(--brand-gold)]/30 bg-[var(--brand-gold)]/10 px-3 py-1.5 text-xs text-[var(--brand-gold-light)] transition hover:bg-[var(--brand-gold)]/20"
                 >
                   📋 보고서
                 </button>
@@ -367,7 +367,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
               {status === "paused" && (
                 <button
                   onClick={() => toggleStatus("active")}
-                  className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs text-white transition hover:bg-violet-500"
+                  className="jsg-btn-primary rounded-lg px-3 py-1.5 text-xs"
                 >
                   재개
                 </button>
@@ -400,33 +400,41 @@ export function DebateArena({ debateId }: DebateArenaProps) {
           apiLayout={apiLayout}
         />
 
-        <section className="relative flex min-w-0 flex-1 flex-col border-r border-white/6">
+        <section className="relative flex min-w-0 flex-1 flex-col border-r border-[var(--brand-gold)]/8">
           <ArenaEffects
             lastPersonaId={lastPersonaId}
             flashKey={flashKey}
             isClash={isClash}
           />
-          <div className="flex shrink-0 items-center justify-between border-b border-white/6 px-5 py-2.5">
-            <p className="text-xs font-medium text-white/50">실시간 토론</p>
+          <div className="flex shrink-0 items-center justify-between border-b border-[var(--brand-gold)]/8 px-5 py-2.5">
+            <p className="text-xs font-medium text-[var(--brand-gold)]/55">실시간 대화</p>
             <p className="text-[10px] text-white/30">
               {messages.length > 0 ? `${messages.length}개 발언` : "대기 중"}
             </p>
           </div>
           <div className="relative flex-1 overflow-y-auto px-5 py-5">
             {messages.length === 0 && (
-              <div className="flex h-full items-center justify-center text-sm text-white/30">
-                천재 3명이 원탁에 앉는 중...
+              <div className="flex h-full items-center justify-center text-sm text-[var(--brand-gold)]/35">
+                자·강·세가 원탁에 앉는 중...
               </div>
             )}
             <div className="mx-auto max-w-2xl space-y-0">
-              {messages.map((msg, i) => (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  prevMessage={messages[i - 1]}
-                  isNew={newMessageIds.has(msg.id)}
-                />
-              ))}
+              {messages.map((msg, i) => {
+                const prev = messages[i - 1];
+                const sameSpeakerTwice =
+                  prev &&
+                  normalizePersonaId(prev.personaId) ===
+                    normalizePersonaId(msg.personaId);
+                return (
+                  <MessageBubble
+                    key={msg.id}
+                    message={msg}
+                    prevMessage={prev}
+                    isNew={newMessageIds.has(msg.id)}
+                    sameSpeakerTwice={sameSpeakerTwice}
+                  />
+                );
+              })}
               {status === "active" && messages.length > 0 && (
                 <TypingIndicator personaId={nextPersona} />
               )}

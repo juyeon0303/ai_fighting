@@ -133,7 +133,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: `${versus.sideA}와 ${versus.sideB} 중 누가/무엇이 더 나은가`,
       sideA: versus.sideA,
       sideB: versus.sideB,
-      brief: `천재 3명이 ${versus.sideA} vs ${versus.sideB}를 각자 시각으로 풀어봄`,
+      brief: `자·강·세가 ${versus.sideA} vs ${versus.sideB}를 각자 시각으로 풀어봄`,
       domain,
       anchors: buildAnchors({
         topic,
@@ -153,7 +153,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: `${comparison.sideA}가 ${comparison.sideB}보다 나은가`,
       sideA: comparison.sideA,
       sideB: comparison.sideB,
-      brief: `천재 3명이 ${comparison.sideA} vs ${comparison.sideB} 비교를 각자 풀어봄`,
+      brief: `자·강·세가 ${comparison.sideA} vs ${comparison.sideB} 비교를 각자 풀어봄`,
       domain,
       anchors: buildAnchors({
         topic,
@@ -171,7 +171,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: topic.replace(/\?$/, ""),
       sideA: null,
       sideB: null,
-      brief: "천재 3명이 서로 다른 답을 내세우며 대화",
+      brief: "자·강·세가 서로 다른 답을 내세우며 대화",
       domain,
       anchors: buildAnchors({ topic, debateQuestion: topic }),
     };
@@ -185,7 +185,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: topic,
       sideA: null,
       sideB: null,
-      brief: "천재 3명이 각자 다른 후보·관점으로 대화",
+      brief: "자·강·세가 각자 다른 후보·관점으로 대화",
       domain,
       anchors: buildAnchors({ topic, debateQuestion: topic }),
     };
@@ -199,7 +199,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: topic,
       sideA: null,
       sideB: null,
-      brief: "천재 3명이 서로 다른 설명·관점으로 대화",
+      brief: "자·강·세가 서로 다른 설명·관점으로 대화",
       domain,
       anchors: buildAnchors({ topic, debateQuestion: topic }),
     };
@@ -213,7 +213,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion: topic,
       sideA: null,
       sideB: null,
-      brief: "천재 3명이 주제를 각자 시각으로 대화",
+      brief: "자·강·세가 주제를 각자 시각으로 대화",
       domain,
       anchors: buildAnchors({ topic, debateQuestion: topic }),
     };
@@ -228,7 +228,7 @@ export function parseTopic(raw: string): TopicContext {
       debateQuestion,
       sideA: null,
       sideB: null,
-      brief: `천재 3명이 「${debateQuestion}」을 각자 풀어봄`,
+      brief: `자·강·세가 「${debateQuestion}」을 각자 풀어봄`,
       domain,
       anchors: buildAnchors({ topic, displayTopic, debateQuestion }),
     };
@@ -241,7 +241,7 @@ export function parseTopic(raw: string): TopicContext {
     debateQuestion: `「${topic}」는 전반적으로 긍정적인가, 부정적인가`,
     sideA: null,
     sideB: null,
-    brief: "천재 3명이 주제를 각자 시각으로 대화",
+    brief: "자·강·세가 주제를 각자 시각으로 대화",
     domain,
     anchors: buildAnchors({ topic, debateQuestion: topic }),
   };

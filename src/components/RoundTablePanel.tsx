@@ -10,14 +10,14 @@ import {
 } from "@/lib/personas";
 import { personaProvider, providerLabel } from "@/lib/debate-llm-config";
 
-/** 원탁 주변 좌석 — 120° 간격, GE 위 / MI 왼아래 / NI 오른아래 */
+/** 원탁 주변 좌석 — 120° 간격, 자 위 / 강 왼아래 / 세 오른아래 */
 const SEAT_ANGLES: Record<PersonaId, number> = {
   atlas: 270,
   cipher: 150,
   ember: 30,
 };
 
-/** 테이블 반지름 + 좌석 간격 (px) — GE(위쪽)는 시각적으로 더 붙게 */
+/** 테이블 반지름 + 좌석 간격 (px) — 자(위쪽)는 시각적으로 더 붙게 */
 const ORBIT_PX: Record<PersonaId, number> = {
   atlas: 88,
   cipher: 112,
@@ -74,8 +74,8 @@ function RoundTable({
           />
         ))}
       </div>
-      <p className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium tracking-[0.2em] text-amber-200/40">
-        ROUND TABLE
+      <p className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium tracking-[0.28em] text-[var(--brand-gold)]/35">
+        原桌
       </p>
     </div>
   );
@@ -150,10 +150,10 @@ export function RoundTablePanel({
   apiLayout,
 }: RoundTablePanelProps) {
   return (
-    <aside className="round-table-panel flex h-full w-[min(100%,26rem)] shrink-0 flex-col border-r border-white/8 bg-black/15 lg:w-[28rem]">
-      <div className="border-b border-white/6 px-4 py-2.5">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-200/35">
-          토론석
+    <aside className="round-table-panel flex h-full w-[min(100%,26rem)] shrink-0 flex-col border-r border-[var(--brand-gold)]/10 bg-black/15 lg:w-[28rem]">
+      <div className="border-b border-[var(--brand-gold)]/8 px-4 py-2.5">
+        <p className="text-[10px] font-semibold tracking-[0.28em] text-[var(--brand-gold)]/45">
+          원탁
         </p>
       </div>
       <div className="flex flex-1 items-center justify-center p-4">

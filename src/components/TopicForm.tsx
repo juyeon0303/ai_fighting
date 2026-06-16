@@ -113,7 +113,7 @@ export function TopicForm() {
 
   return (
     <form onSubmit={handleSubmit} className="w-full">
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 sm:p-6">
+      <div className="jsg-card rounded-2xl p-5 sm:p-6">
         <ApiKeySetupPanel
           layout={layout}
           onLayoutChange={setLayout}
@@ -133,21 +133,21 @@ export function TopicForm() {
           onRememberKeyChange={setRememberKey}
         />
 
-        <div className="mt-5 border-t border-white/8 pt-5">
-          <label className="mb-2 block text-xs text-white/45">토론 주제</label>
+        <div className="mt-5 border-t border-[var(--brand-gold)]/10 pt-5">
+          <label className="mb-2 block text-xs text-[var(--brand-gold)]/45">토론 주제</label>
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="text"
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
               placeholder="예: 동양 vs 서양 사고방식"
-              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white placeholder:text-white/25 outline-none transition focus:border-white/20"
+              className="jsg-input min-w-0 flex-1 rounded-lg px-3 py-2.5 text-sm transition"
               disabled={loading}
             />
             <button
               type="submit"
               disabled={!topic.trim() || loading}
-              className="shrink-0 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="jsg-btn-primary shrink-0 rounded-lg px-4 py-2.5 text-sm"
             >
               {loading ? "생성 중..." : "토론 시작"}
             </button>

@@ -15,9 +15,15 @@ interface MessageBubbleProps {
   message: DebateMessage;
   prevMessage?: DebateMessage;
   isNew?: boolean;
+  sameSpeakerTwice?: boolean;
 }
 
-export function MessageBubble({ message, prevMessage, isNew }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  prevMessage,
+  isNew,
+  sameSpeakerTwice,
+}: MessageBubbleProps) {
   const pid = normalizePersonaId(message.personaId);
   const provider = providerFromMessageSource(message.llmSource);
   const persona = getPersona(pid, provider);
@@ -60,8 +66,13 @@ export function MessageBubble({ message, prevMessage, isNew }: MessageBubbleProp
                 : "엔진"}
           </span>
         )}
+        {sameSpeakerTwice && (
+          <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-300/80">
+            순서 오류
+          </span>
+        )}
         {spark && (
-          <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-violet-300/80">
+          <span className="rounded bg-[var(--brand-gold)]/10 px-1.5 py-0.5 text-[10px] text-[var(--brand-gold-light)]/80">
             반응
           </span>
         )}

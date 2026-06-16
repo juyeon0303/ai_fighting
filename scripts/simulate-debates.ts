@@ -112,13 +112,13 @@ function main() {
         "cipher",
         "gemini",
       );
-      const geUser = fullRound.find((c) => c.text.startsWith("[GE]:"));
+      const geUser = fullRound.find((c) => c.text.startsWith("[자]:"));
       const miModel = fullRound.filter((c) => c.role === "model");
       if (!geUser || geUser.role !== "user") {
-        throw new Error("GE line must be user with speaker label");
+        throw new Error("자 line must be user with speaker label");
       }
       if (miModel.length !== 1 || !miModel[0]?.text.includes("테스트")) {
-        throw new Error("MI should have exactly one model turn (self)");
+        throw new Error("강 should have exactly one model turn (self)");
       }
 
       passed++;
@@ -135,7 +135,7 @@ function main() {
 
   if (failed > 0) process.exit(1);
 
-  console.log("=== 샘플: 페이커 vs 쵸비 / GE 차례 ===\n");
+  console.log("=== 샘플: 페이커 vs 쵸비 / 자 차례 ===\n");
   const history: DebateMessage[] = DEBATE_TURN_ORDER.map((id, i) => ({
     id: `h-${id}`,
     debateId: "sim",
