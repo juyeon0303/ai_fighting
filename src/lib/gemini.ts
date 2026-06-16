@@ -127,19 +127,26 @@ async function callGeminiOnce(
   return { ok: true, status: res.status, data };
 }
 
-function extractGeminiText(data: unknown): string | null {
+function extractGeminiText(data: unknown): {
+  text: string | null;
+  truncated: boolean;
+} {
   const d = data as {
     candidates?: Array<{
       content?: { parts?: Array<{ text?: string }> };
+      finishReason?: string;
     }>;
-    usageMetadata?: {
-      totalTokenCount?: number;
-      promptTokenCount?: number;
-      candidatesTokenCount?: number;
-    };
   };
 
-  return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? null;
+  const candidate = d.candidates?.[0];
+  const text = candidate?.content?.parts?.[0]?.text?.trim() ?? null;
+  const reason = candidate?.finishReason ?? "";
+  const truncated =
+    reason === "MAX_TOKENS" ||
+    reason === "LENGTH" ||
+    reason === "RECITATION";
+
+  return { text, truncated };
 }
 
 function extractGeminiTokens(data: unknown): number {
@@ -164,6 +171,7 @@ export async function requestGeminiChat(
   content: string | null;
   tokensUsed: number;
   stopReason: LlmStopReason;
+  truncated: boolean;
 }> {
   let lastStatus = 0;
   let lastError = "";
@@ -211,11 +219,11 @@ export async function requestGeminiChat(
             continue;
           }
 
-          const text = extractGeminiText(result.data);
+          const { text, truncated } = extractGeminiText(result.data);
           const tokensUsed = extractGeminiTokens(result.data);
 
           if (text) {
-            return { content: text, tokensUsed, stopReason: null };
+            return { content: text, tokensUsed, stopReason: null, truncated };
           }
 
           lastError = `empty response (${candidateModel})`;
@@ -231,10 +239,10 @@ export async function requestGeminiChat(
   }
 
   if (sawQuotaError) {
-    return { content: null, tokensUsed: 0, stopReason: "quota" };
+    return { content: null, tokensUsed: 0, stopReason: "quota", truncated: false };
   }
   if (sawAuthError) {
-    return { content: null, tokensUsed: 0, stopReason: "auth" };
+    return { content: null, tokensUsed: 0, stopReason: "auth", truncated: false };
   }
 
   if (lastStatus) {
@@ -243,11 +251,12 @@ export async function requestGeminiChat(
       content: null,
       tokensUsed: 0,
       stopReason: mapGeminiError(lastStatus),
+      truncated: false,
     };
   }
 
   console.warn("[gemini] no usable response", lastError);
-  return { content: null, tokensUsed: 0, stopReason: null };
+  return { content: null, tokensUsed: 0, stopReason: null, truncated: false };
 }
 
 /** 단일 user 메시지 (키 검증·분석용) */

@@ -14,7 +14,8 @@ import { requestGeminiChat } from "./gemini";
 import { parseTopic } from "./topic-context";
 import {
   clampTurnContent,
-  isIncompleteTurn,
+  extractCompleteTurnText,
+  isTurnComplete,
   maxOutputTokens,
 } from "./debate-turn-budget";
 
@@ -26,6 +27,13 @@ export interface TurnResult {
   source: "openai" | "gemini";
   stopReason: LlmStopReason;
 }
+
+type ProviderTurnResult = {
+  content: string | null;
+  tokensUsed: number;
+  stopReason: LlmStopReason;
+  truncated: boolean;
+};
 
 function usageTotal(usage?: {
   total_tokens?: number;
@@ -55,14 +63,24 @@ function normalizeTurn(
   raw: string | null,
   personaId: PersonaId,
   tokenSaveMode: boolean,
+  truncated: boolean,
 ): string {
   if (!raw?.trim()) return "";
+
   const cleaned = sanitizeTurnOutput(raw);
   const scrubbed = scrubLowQualityPhrases(cleaned);
-  const clamped = clampTurnContent(scrubbed, personaId, tokenSaveMode);
-  if (isIncompleteTurn(clamped)) return "";
-  if (isLowQualityTurn(clamped)) return "";
-  return clamped;
+  let text = clampTurnContent(scrubbed, personaId, tokenSaveMode);
+
+  if (truncated || !isTurnComplete(text)) {
+    text = extractCompleteTurnText(scrubbed);
+    if (tokenSaveMode && text) {
+      text = clampTurnContent(text, personaId, true);
+    }
+  }
+
+  if (!text || !isTurnComplete(text)) return "";
+  if (isLowQualityTurn(text)) return "";
+  return text;
 }
 
 async function requestOpenAiChatTurn(
@@ -72,7 +90,7 @@ async function requestOpenAiChatTurn(
   turns: ReturnType<typeof buildOpenAiChatTurns>,
   personaId: PersonaId,
   tokenSaveMode: boolean,
-): Promise<{ content: string | null; tokensUsed: number; stopReason: LlmStopReason }> {
+): Promise<ProviderTurnResult> {
   try {
     const response = await client.chat.completions.create({
       model,
@@ -87,16 +105,21 @@ async function requestOpenAiChatTurn(
       temperature: tokenSaveMode ? 0.72 : 0.82,
     });
 
+    const choice = response.choices[0];
+    const truncated = choice?.finish_reason === "length";
+
     return {
-      content: response.choices[0]?.message?.content?.trim() ?? null,
+      content: choice?.message?.content?.trim() ?? null,
       tokensUsed: usageTotal(response.usage),
       stopReason: null,
+      truncated,
     };
   } catch (error) {
     return {
       content: null,
       tokensUsed: 0,
       stopReason: mapApiError(error),
+      truncated: false,
     };
   }
 }
@@ -109,7 +132,8 @@ async function callProviderTurn(
   personaId: PersonaId,
   retry: boolean,
   qualityRetry: boolean,
-): Promise<{ content: string | null; tokensUsed: number; stopReason: LlmStopReason }> {
+  incompleteRetry: boolean,
+): Promise<ProviderTurnResult> {
   const provider = runtime.provider;
   const save = runtime.tokenSaveMode;
 
@@ -124,10 +148,10 @@ async function callProviderTurn(
     if (retry) {
       const last = contents[contents.length - 1];
       if (last?.role === "user") {
-        last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry, save)}`;
+        last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry, save, incompleteRetry)}`;
       }
     }
-    return requestGeminiChat(
+    const result = await requestGeminiChat(
       runtime.apiKey!,
       runtime.model,
       system,
@@ -135,13 +159,19 @@ async function callProviderTurn(
       maxOutputTokens(personaId, save),
       { googleSearch: true },
     );
+    return {
+      content: result.content,
+      tokensUsed: result.tokensUsed,
+      stopReason: result.stopReason,
+      truncated: result.truncated,
+    };
   }
 
   const turns = buildOpenAiChatTurns(topic, history, personaId, "openai", save);
   if (retry) {
     const last = turns[turns.length - 1];
     if (last?.role === "user") {
-      last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry, save)}`;
+      last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry, save, incompleteRetry)}`;
     }
   }
   return requestOpenAiChatTurn(
@@ -178,8 +208,9 @@ export async function generateDebateTurn(
   const system = personaSystemInstruction(topic, personaId, source, save);
   let totalTokens = 0;
   let lastStopReason: LlmStopReason = null;
+  let lastWasIncomplete = false;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     const result = await callProviderTurn(
       topic,
       runtime,
@@ -187,7 +218,8 @@ export async function generateDebateTurn(
       history,
       personaId,
       attempt > 0,
-      attempt >= 1,
+      attempt >= 2,
+      lastWasIncomplete || attempt >= 1,
     );
     totalTokens += result.tokensUsed;
 
@@ -196,7 +228,13 @@ export async function generateDebateTurn(
       break;
     }
 
-    const content = normalizeTurn(result.content, personaId, save);
+    const content = normalizeTurn(
+      result.content,
+      personaId,
+      save,
+      result.truncated,
+    );
+
     if (content) {
       return {
         content,
@@ -205,6 +243,8 @@ export async function generateDebateTurn(
         stopReason: null,
       };
     }
+
+    lastWasIncomplete = Boolean(result.content?.trim()) || result.truncated;
   }
 
   return {

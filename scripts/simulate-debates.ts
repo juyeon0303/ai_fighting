@@ -4,6 +4,7 @@
  */
 import { parseTopic, getModeLabel } from "../src/lib/topic-context";
 import { buildGeminiContents } from "../src/lib/debate-content";
+import { isTurnComplete } from "../src/lib/debate-turn-budget";
 import { DEBATE_TURN_ORDER } from "../src/lib/personas";
 import type { DebateMessage } from "../src/lib/types";
 
@@ -44,6 +45,22 @@ function main() {
   console.log("\n=== 토론 시뮬레이션 (멀티턴 구조) ===\n");
   console.log(`테스트 주제: ${TEST_TOPICS.length}개\n`);
 
+  const turnCases: Array<[string, boolean]> = [
+    ["근데 붕어빵처럼 각각 다른 존재라고 단정 짓", false],
+    ["그건 좀 맞는 말이야.", true],
+    ["그렇지, 그건 핵심이야.", true],
+    ["완전히 다른 거라고 단정", false],
+    ["솔직히 잘 모르겠는데", true],
+  ];
+  for (const [text, ok] of turnCases) {
+    const got = isTurnComplete(text);
+    if (got !== ok) {
+      console.error(`[FAIL] turn complete: "${text}" expected ${ok}, got ${got}`);
+      process.exit(1);
+    }
+  }
+  console.log("[PASS] turn completeness checks\n");
+
   let passed = 0;
   let failed = 0;
 
@@ -66,6 +83,15 @@ function main() {
         if (last.role !== "user") {
           throw new Error("last turn must be user nudge");
         }
+        const selfModels = contents.filter((c) => c.role === "model").length;
+        const selfMessages = messages.filter(
+          (m) => m.personaId === personaId,
+        ).length;
+        if (selfModels !== selfMessages) {
+          throw new Error(
+            `model turns ${selfModels} != own history ${selfMessages}`,
+          );
+        }
         if (contents.length < 1) {
           throw new Error("contents empty");
         }
@@ -83,12 +109,16 @@ function main() {
       const fullRound = buildGeminiContents(
         ctx.topic,
         messages,
-        "atlas",
+        "cipher",
         "gemini",
       );
-      const modelTurns = fullRound.filter((c) => c.role === "model").length;
-      if (modelTurns !== 3) {
-        throw new Error(`expected 3 model turns, got ${modelTurns}`);
+      const geUser = fullRound.find((c) => c.text.startsWith("[GE]:"));
+      const miModel = fullRound.filter((c) => c.role === "model");
+      if (!geUser || geUser.role !== "user") {
+        throw new Error("GE line must be user with speaker label");
+      }
+      if (miModel.length !== 1 || !miModel[0]?.text.includes("테스트")) {
+        throw new Error("MI should have exactly one model turn (self)");
       }
 
       passed++;

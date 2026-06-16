@@ -3,6 +3,7 @@ import type { TopicContext } from "./topic-context";
 import {
   personaDisplayName,
   personaNamesLabel,
+  normalizePersonaId,
   providerFromMessageSource,
 } from "./personas";
 
@@ -75,15 +76,18 @@ export function personaSystemInstruction(
   };
 
   const lengthRule = tokenSaveMode
-    ? "1~3문장 짧은 반말. 핵심만. 문장은 반드시 끝까지 — 중간에 끊지 마."
-    : "친구 단톡처럼 편한 반말. 필요하면 여러 문장도 됨.";
+    ? "1~3문장 짧은 반말. 핵심만. 마지막은 반드시 완전한 문장으로 끝내 — 중간에 끊지 마."
+    : "친구 단톡처럼 편한 반말. 마지막은 반드시 완전한 문장(다/요/거든/잖아 등)으로 끝내 — 중간에 끊지 마.";
 
   return [
     `너는 ${name}. 친구 ${personaNamesLabel(provider)}랑 「${topic}」 원탁 수다 중.`,
     roles[personaId],
     lengthRule,
+    "출력은 미완성 어미·끊긴 문장으로 끝내지 마. 한 문장을 쓰다 말고 멈추지 마.",
     "말투: '근데', '솔직히', '아니', '그치만', '~거든' 같은 구어. 매번 같은 시작·패턴 반복 금지.",
-    "항상 직전 말부터 반응하고, 그다음에 네 의견.",
+    "항상 직전 말(다른 사람)부터 반응하고, 그다음에 네 의견.",
+    "네가 예전에 한 말을 반박하거나, 자기 말을 남 말인 척 만들지 마.",
+    "GE→MI→NI 순서로 한 명씩만 말함 — 같은 사람이 두 번 연속 말하지 않음.",
     "사실·숫자는 검색으로 확인한 것만. 모르면 '잘 모르겠는데'만.",
     "대학·실험·%·연구 인용 대잔치 금지. 철학·심리 용어로 분위기만 잡지 마.",
     "빈동의('동의해'만) 금지 — 동의해도 이유 한 줄은 붙여.",
@@ -93,7 +97,24 @@ export function personaSystemInstruction(
 }
 
 function openingUserMessage(topic: string, provider: ApiProvider): string {
-  return `주제: 「${topic}」\n\n${personaNamesLabel(provider)} 셋이 원탁에 앉아 친구처럼 말해. 틀리거나 과한 말엔 바로 반박해.`;
+  return `주제: 「${topic}」\n\n${personaNamesLabel(provider)} 셋이 원탁에 GE→MI→NI 순서로 한 명씩 말해. 틀리거나 과한 말엔 바로 반박해.`;
+}
+
+/** 화자별 role — 내 말만 model, 남 말은 user+[이름] */
+function historyTurn(
+  msg: DebateMessage,
+  currentPersonaId: PersonaId,
+  provider: ApiProvider,
+): { role: "user" | "model"; text: string } {
+  const speakerId = normalizePersonaId(msg.personaId);
+  const speaker = personaDisplayName(
+    speakerId,
+    providerFromMessageSource(msg.llmSource),
+  );
+  if (speakerId === currentPersonaId) {
+    return { role: "model", text: msg.content };
+  }
+  return { role: "user", text: `[${speaker}]: ${msg.content}` };
 }
 
 function pushbackHint(personaId: PersonaId): string {
@@ -119,10 +140,10 @@ function currentTurnUserPrompt(
   }
   const last = history[history.length - 1]!;
   const lastName = personaDisplayName(
-    last.personaId,
+    normalizePersonaId(last.personaId),
     providerFromMessageSource(last.llmSource),
   );
-  return `${name} 차례. ${lastName} 말 들었지? ${pushbackHint(personaId)}. 같은 말·문장 시작 반복하지 말고.${shortHint}`;
+  return `${name} 차례. 직전 [${lastName}] 말에만 반응해 — ${lastName}가 아닌 다른 사람 말이나 네 예전 말을 반박하지 마. ${pushbackHint(personaId)}. 같은 말·문장 시작 반복하지 말고.${shortHint}`;
 }
 
 /** Gemini API 멀티턴 contents (user/model 교차) */
@@ -147,11 +168,9 @@ export function buildGeminiContents(
   ];
 
   for (const msg of history) {
-    contents.push({ role: "model", text: msg.content });
-    contents.push({ role: "user", text: "다음 사람." });
+    contents.push(historyTurn(msg, personaId, provider));
   }
 
-  contents.pop();
   contents.push({
     role: "user",
     text: currentTurnUserPrompt(personaId, provider, history, tokenSaveMode),
@@ -182,11 +201,13 @@ export function buildOpenAiChatTurns(
   ];
 
   for (const msg of history) {
-    turns.push({ role: "assistant", text: msg.content });
-    turns.push({ role: "user", text: "다음 사람." });
+    const turn = historyTurn(msg, personaId, provider);
+    turns.push({
+      role: turn.role === "model" ? "assistant" : "user",
+      text: turn.text,
+    });
   }
 
-  turns.pop();
   turns.push({
     role: "user",
     text: currentTurnUserPrompt(personaId, provider, history, tokenSaveMode),
@@ -211,7 +232,13 @@ export function sanitizeTurnOutput(raw: string): string {
 export function buildDebateRetryHint(
   quality = false,
   tokenSaveMode = false,
+  incomplete = false,
 ): string {
+  if (incomplete) {
+    return tokenSaveMode
+      ? "문장이 중간에 끊겼어. 1~3문장, 마지막은 완전한 반말로 끝까지 다시."
+      : "문장이 중간에 끊겼어. 마지막은 완결 어미(다/요/거든/잖아 등)로 끝내고 다시.";
+  }
   if (quality) {
     return tokenSaveMode
       ? "에세이·가짜 통계 빼. 1~3문장, 문장 끝까지 짧게 다시."

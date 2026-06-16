@@ -24,8 +24,13 @@ import {
 } from "./debate-llm-config";
 import { generateDebateTurn } from "./llm";
 import {
+  isTurnComplete,
+} from "./debate-turn-budget";
+import {
+  DEBATE_TURN_ORDER,
   effectiveTurnIntervalMs,
   getNextPersona,
+  normalizePersonaId,
   TURNS_PER_ROUND,
   WORKER_TICK_MS,
 } from "./personas";
@@ -148,6 +153,30 @@ async function processDebateTurnInner(
     }
 
     const personaId = getNextPersona(round, messageCountAtStart);
+    const lastSpeaker =
+      messages.length > 0
+        ? normalizePersonaId(messages[messages.length - 1]!.personaId)
+        : null;
+    if (lastSpeaker && lastSpeaker === personaId) {
+      console.warn(
+        `[debate ${debateId}] blocked consecutive ${personaId} turn (count=${messageCountAtStart})`,
+      );
+      return null;
+    }
+    if (lastSpeaker) {
+      const lastIdx = DEBATE_TURN_ORDER.indexOf(lastSpeaker);
+      const expectedAfterLast =
+        lastIdx >= 0
+          ? DEBATE_TURN_ORDER[(lastIdx + 1) % TURNS_PER_ROUND]
+          : personaId;
+      if (expectedAfterLast !== personaId) {
+        console.warn(
+          `[debate ${debateId}] turn order mismatch: expected ${expectedAfterLast}, got ${personaId}`,
+        );
+        return null;
+      }
+    }
+
     const runtime = resolvePersonaLlmRuntime(debate, personaId);
     const turn = await generateDebateTurn(
       debate.topic,
@@ -171,7 +200,7 @@ async function processDebateTurnInner(
       return null;
     }
 
-    if (!turn.content?.trim()) {
+    if (!turn.content?.trim() || !isTurnComplete(turn.content)) {
       const streak = (emptyTurnStreak.get(debateId) ?? 0) + 1;
       emptyTurnStreak.set(debateId, streak);
       console.warn(
