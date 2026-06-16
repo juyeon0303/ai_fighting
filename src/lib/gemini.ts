@@ -16,8 +16,8 @@ const FETCH_TIMEOUT_SEARCH_MS = 90_000;
 export type GeminiContent = { role: "user" | "model"; text: string };
 
 export type GeminiRequestOptions = {
-  /** Google Search grounding — 사실·최신 정보 확인용 */
   googleSearch?: boolean;
+  temperature?: number;
 };
 
 export function isLikelyGeminiKey(key: string): boolean {
@@ -48,12 +48,9 @@ function authModes(apiKey: string): Array<"header" | "query"> {
 function buildGenerationConfig(
   model: string,
   maxOutputTokens: number,
+  temperature = 0.94,
 ): Record<string, unknown> {
-  const base = { maxOutputTokens };
-  if (!model.startsWith("gemini-3")) {
-    return { ...base, temperature: 0.82 };
-  }
-  return base;
+  return { maxOutputTokens, temperature };
 }
 
 async function fetchWithTimeout(
@@ -76,11 +73,16 @@ function buildGeminiBody(
   model: string,
   outputTokenLimit: number,
   googleSearch: boolean,
+  temperature: number,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     systemInstruction: { parts: [{ text: system }] },
     contents: apiContents,
-    generationConfig: buildGenerationConfig(model, outputTokenLimit),
+    generationConfig: buildGenerationConfig(
+      model,
+      outputTokenLimit,
+      temperature,
+    ),
   };
   if (googleSearch) {
     body.tools = [{ google_search: {} }];
@@ -184,6 +186,7 @@ export async function requestGeminiChat(
   }));
 
   const searchModes = options.googleSearch ? [true, false] : [false];
+  const temperature = options.temperature ?? 0.94;
 
   for (const candidateModel of modelCandidates(model)) {
     for (const useSearch of searchModes) {
@@ -193,6 +196,7 @@ export async function requestGeminiChat(
         candidateModel,
         outputTokenLimit,
         useSearch,
+        temperature,
       );
       const timeoutMs = useSearch ? FETCH_TIMEOUT_SEARCH_MS : FETCH_TIMEOUT_MS;
 

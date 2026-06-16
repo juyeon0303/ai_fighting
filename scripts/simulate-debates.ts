@@ -108,7 +108,10 @@ function main() {
           personaId,
           "gemini",
         );
-        if (!contents[0]?.text.includes(ctx.topic)) {
+        if (
+          !contents[0]?.text.includes(ctx.displayTopic) &&
+          !contents[0]?.text.includes(ctx.topic)
+        ) {
           throw new Error("opening missing topic");
         }
         const last = contents[contents.length - 1];

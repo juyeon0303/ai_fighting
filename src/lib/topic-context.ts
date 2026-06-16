@@ -280,3 +280,21 @@ export function getModeLabel(mode: DebateMode): string {
   };
   return labels[mode];
 }
+
+/** LLM 프롬프트용 — 단톡 맥락 한 줄 */
+export function topicChatLine(ctx: TopicContext): string {
+  if (ctx.mode === "casual") {
+    return `「${ctx.displayTopic}」 얘기를 친구 셋이 단톡하듯 반말로.`;
+  }
+  if (ctx.sideA && ctx.sideB) {
+    return `「${ctx.sideA} vs ${ctx.sideB}」 얘기 중.`;
+  }
+  return `「${ctx.displayTopic}」 얘기 중.`;
+}
+
+/** 과학·기술·찬반 주제만 검색 보강 */
+export function topicUsesSearch(ctx: TopicContext): boolean {
+  if (ctx.domain === "science" || ctx.domain === "tech") return true;
+  if (ctx.mode === "proposition") return true;
+  return false;
+}

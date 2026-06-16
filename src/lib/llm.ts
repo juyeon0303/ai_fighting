@@ -8,6 +8,7 @@ import {
   personaSystemInstruction,
   sanitizeTurnOutput,
   scrubLowQualityPhrases,
+  topicUsesSearch,
 } from "./debate-content";
 import type { PersonaLlmRuntime } from "./debate-llm-config";
 import { requestGeminiChat } from "./gemini";
@@ -34,6 +35,8 @@ type ProviderTurnResult = {
   stopReason: LlmStopReason;
   truncated: boolean;
 };
+
+const MAX_ATTEMPTS = 3;
 
 function usageTotal(usage?: {
   total_tokens?: number;
@@ -68,19 +71,19 @@ function normalizeTurn(
   if (!raw?.trim()) return "";
 
   const cleaned = sanitizeTurnOutput(raw);
-  const scrubbed = scrubLowQualityPhrases(cleaned);
-  let text = clampTurnContent(scrubbed, personaId, tokenSaveMode);
+  const text = scrubLowQualityPhrases(cleaned);
+  let out = clampTurnContent(text, personaId, tokenSaveMode);
 
-  if (truncated || !isTurnComplete(text)) {
-    text = extractCompleteTurnText(scrubbed);
-    if (tokenSaveMode && text) {
-      text = clampTurnContent(text, personaId, true);
+  if (truncated || !isTurnComplete(out)) {
+    out = extractCompleteTurnText(text);
+    if (tokenSaveMode && out) {
+      out = clampTurnContent(out, personaId, true);
     }
   }
 
-  if (!text || !isTurnComplete(text)) return "";
-  if (isLowQualityTurn(text)) return "";
-  return text;
+  if (!out || !isTurnComplete(out)) return "";
+  if (isLowQualityTurn(out)) return "";
+  return out;
 }
 
 async function requestOpenAiChatTurn(
@@ -102,17 +105,16 @@ async function requestOpenAiChatTurn(
         })),
       ],
       max_tokens: maxOutputTokens(personaId, tokenSaveMode),
-      temperature: tokenSaveMode ? 0.72 : 0.82,
+      temperature: tokenSaveMode ? 0.88 : 0.94,
+      top_p: 0.92,
     });
 
     const choice = response.choices[0];
-    const truncated = choice?.finish_reason === "length";
-
     return {
       content: choice?.message?.content?.trim() ?? null,
       tokensUsed: usageTotal(response.usage),
       stopReason: null,
-      truncated,
+      truncated: choice?.finish_reason === "length",
     };
   } catch (error) {
     return {
@@ -133,6 +135,8 @@ async function callProviderTurn(
   retry: boolean,
   qualityRetry: boolean,
   incompleteRetry: boolean,
+  googleSearch: boolean,
+  temperature: number,
 ): Promise<ProviderTurnResult> {
   const provider = runtime.provider;
   const save = runtime.tokenSaveMode;
@@ -157,7 +161,7 @@ async function callProviderTurn(
       system,
       contents,
       maxOutputTokens(personaId, save),
-      { googleSearch: true },
+      { googleSearch, temperature },
     );
     return {
       content: result.content,
@@ -192,9 +196,11 @@ export async function generateDebateTurn(
   _debateId: string,
   runtime: PersonaLlmRuntime,
 ): Promise<TurnResult> {
-  parseTopic(topic);
+  const ctx = parseTopic(topic);
   const source = runtime.provider === "gemini" ? "gemini" : "openai";
   const save = runtime.tokenSaveMode;
+  const temperature = save ? 0.88 : 0.94;
+  const googleSearch = topicUsesSearch(ctx);
 
   if (!runtime.apiKey) {
     return {
@@ -210,7 +216,7 @@ export async function generateDebateTurn(
   let lastStopReason: LlmStopReason = null;
   let lastWasIncomplete = false;
 
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const result = await callProviderTurn(
       topic,
       runtime,
@@ -219,7 +225,9 @@ export async function generateDebateTurn(
       personaId,
       attempt > 0,
       attempt >= 2,
-      lastWasIncomplete || attempt >= 1,
+      lastWasIncomplete,
+      googleSearch,
+      temperature,
     );
     totalTokens += result.tokensUsed;
 
