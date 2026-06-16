@@ -67,21 +67,23 @@ export function personaSystemInstruction(
   const name = personaDisplayName(personaId, provider);
   const roles: Record<PersonaId, string> = {
     atlas:
-      "큰 그림·핵심 변수를 짚어. 직전 말이 과하면 반박해도 됨.",
+      "큰 그림·핵심 변수. 방금 말에 먼저 반응한 뒤 한두 포인트만.",
     cipher:
-      "논리·반례 담당. 동의는 정말 맞을 때만 — 허술한 근거·꾸며낸 숫자·실험 인용은 바로 찌르고 물고 늘어져.",
+      "논리·반례. 억지·꾸며낸 숫자·실험 인용은 바로 찌르고, 맞을 때만 이유 붙여 동의.",
     ember:
-      "쉬운 비유로 말해. 직전 말이 억지면 '그건 좀 아닌데' 하고 반박해.",
+      "쉬운 비유. 방금 말이 억지면 '그건 좀' 하고 반박, 맞으면 비유로 이어가.",
   };
 
   const lengthRule = tokenSaveMode
-    ? "1~3문장, 짧은 반말. 핵심만. 문장은 반드시 끝까지 — 중간에 끊지 마."
-    : "편한 반말. 재미는 살려도 됨. 길이 제한 없음.";
+    ? "1~3문장 짧은 반말. 핵심만. 문장은 반드시 끝까지 — 중간에 끊지 마."
+    : "친구 단톡처럼 편한 반말. 필요하면 여러 문장도 됨.";
 
   return [
-    `친구들이랑 「${topic}」 가볍게 토론 중. 너는 ${name}.`,
+    `너는 ${name}. 친구 ${personaNamesLabel(provider)}랑 「${topic}」 원탁 수다 중.`,
     roles[personaId],
     lengthRule,
+    "말투: '근데', '솔직히', '아니', '그치만', '~거든' 같은 구어. 매번 같은 시작·패턴 반복 금지.",
+    "항상 직전 말부터 반응하고, 그다음에 네 의견.",
     "사실·숫자는 검색으로 확인한 것만. 모르면 '잘 모르겠는데'만.",
     "대학·실험·%·연구 인용 대잔치 금지. 철학·심리 용어로 분위기만 잡지 마.",
     "빈동의('동의해'만) 금지 — 동의해도 이유 한 줄은 붙여.",
@@ -91,17 +93,17 @@ export function personaSystemInstruction(
 }
 
 function openingUserMessage(topic: string, provider: ApiProvider): string {
-  return `주제: 「${topic}」\n\n${personaNamesLabel(provider)} 셋이 친구처럼 말하되, 틀리거나 과한 말엔 서로 반박해.`;
+  return `주제: 「${topic}」\n\n${personaNamesLabel(provider)} 셋이 원탁에 앉아 친구처럼 말해. 틀리거나 과한 말엔 바로 반박해.`;
 }
 
 function pushbackHint(personaId: PersonaId): string {
   if (personaId === "cipher") {
-    return "직전 말에서 허술한 부분 찾아 반박해. 동의만 하지 마.";
+    return "방금 말에서 허술한 데 찾아 반박해. 동의만 말하지 마";
   }
   if (personaId === "atlas") {
-    return "직전 말이 과하거나 빈틈 있으면 반박해. 맞으면 짧게 동의하고 한 발 더.";
+    return "방금 말에 먼저 반응해. 과하거나 틀리면 반박, 맞으면 짧게 동의하고 한 발 더";
   }
-  return "직전 말이 억지면 반박하고, 맞으면 비유로 이어가.";
+  return "방금 말이 억지면 반박, 맞으면 비유로 이어가";
 }
 
 function currentTurnUserPrompt(
@@ -120,7 +122,7 @@ function currentTurnUserPrompt(
     last.personaId,
     providerFromMessageSource(last.llmSource),
   );
-  return `${name} 차례야. ${lastName} 말에 ${pushbackHint(personaId)} 같은 말 반복 말고 구체적으로.${shortHint}`;
+  return `${name} 차례. ${lastName} 말 들었지? ${pushbackHint(personaId)}. 같은 말·문장 시작 반복하지 말고.${shortHint}`;
 }
 
 /** Gemini API 멀티턴 contents (user/model 교차) */
@@ -146,7 +148,7 @@ export function buildGeminiContents(
 
   for (const msg of history) {
     contents.push({ role: "model", text: msg.content });
-    contents.push({ role: "user", text: "이어서." });
+    contents.push({ role: "user", text: "다음 사람." });
   }
 
   contents.pop();
@@ -181,7 +183,7 @@ export function buildOpenAiChatTurns(
 
   for (const msg of history) {
     turns.push({ role: "assistant", text: msg.content });
-    turns.push({ role: "user", text: "이어서." });
+    turns.push({ role: "user", text: "다음 사람." });
   }
 
   turns.pop();
@@ -213,11 +215,11 @@ export function buildDebateRetryHint(
   if (quality) {
     return tokenSaveMode
       ? "에세이·가짜 통계 빼. 1~3문장, 문장 끝까지 짧게 다시."
-      : "에세이·가짜 통계·대학 실험 인용 빼. 주제에 닿는 친구 반말로 다시.";
+      : "에세이·가짜 통계·대학 실험 인용 빼. 방금 말에 반응하는 친구 반말로 다시.";
   }
   return tokenSaveMode
     ? "지어낸 근거 빼. 1~3문장, 중간에 끊지 말고 짧게 다시."
-    : "지어낸 근거 넣지 마. 검색 없으면 숫자 빼. 친구 반말로 다시.";
+    : "지어낸 근거 넣지 마. 검색 없으면 숫자 빼. 직전 말에 자연스럽게 이어지는 반말로 다시.";
 }
 
 /** @deprecated 시뮬 호환 — 멀티턴 첫 user 메시지 검증용 */

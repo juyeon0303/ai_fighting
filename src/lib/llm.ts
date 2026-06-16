@@ -84,7 +84,7 @@ async function requestOpenAiChatTurn(
         })),
       ],
       max_tokens: maxOutputTokens(personaId, tokenSaveMode),
-      temperature: tokenSaveMode ? 0.65 : 0.75,
+      temperature: tokenSaveMode ? 0.72 : 0.82,
     });
 
     return {

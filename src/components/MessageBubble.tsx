@@ -22,66 +22,54 @@ export function MessageBubble({ message, prevMessage, isNew }: MessageBubbleProp
   const provider = providerFromMessageSource(message.llmSource);
   const persona = getPersona(pid, provider);
   const spark = isSparkMessage(message, prevMessage);
-  const slideFrom =
-    pid === "atlas"
-      ? "msg-slide-right"
-      : pid === "cipher"
-        ? "msg-slide-left"
-        : "";
+  const time = new Date(message.createdAt).toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   return (
-    <div
-      className={`flex gap-3 ${isNew ? "msg-enter" : ""} ${slideFrom} ${spark ? "msg-clash" : ""}`}
+    <article
+      className={`border-b border-white/[0.06] pb-4 last:border-b-0 ${isNew ? "msg-enter" : ""} ${spark ? "msg-clash" : ""}`}
     >
-      <div
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg transition-transform ${isNew ? "avatar-pop" : ""}`}
-        style={{ backgroundColor: `${persona.color}22` }}
-      >
-        {persona.emoji}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="text-sm font-semibold" style={{ color: persona.color }}>
-            {persona.name}
-          </span>
-          <span className="text-xs text-white/30">{persona.role}</span>
-          {message.llmSource && (
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] ${
-                message.llmSource === "gemini"
-                  ? "bg-sky-500/15 text-sky-300"
-                  : message.llmSource === "openai"
-                    ? "bg-emerald-500/15 text-emerald-300"
-                    : "bg-amber-500/15 text-amber-300"
-              }`}
-            >
-              {message.llmSource === "gemini"
-                ? "Gemini"
-                : message.llmSource === "openai"
-                  ? "GPT"
-                  : "엔진"}
-            </span>
-          )}
-          {spark && (
-            <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
-              반응
-            </span>
-          )}
-        </div>
-        <div
-          className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed text-white/85"
-          style={{
-            backgroundColor: `${persona.color}15`,
-            borderLeft: `3px solid ${persona.color}`,
-          }}
+      <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span
+          className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-sm ${isNew ? "avatar-pop" : ""}`}
+          style={{ backgroundColor: `${persona.color}22` }}
         >
-          {message.content}
-        </div>
-        <p className="mt-1 text-xs text-white/20">
-          {new Date(message.createdAt).toLocaleTimeString("ko-KR")}
-        </p>
+          {persona.emoji}
+        </span>
+        <span className="text-sm font-semibold" style={{ color: persona.color }}>
+          {persona.name}
+        </span>
+        <span className="text-[11px] text-white/28">{persona.role}</span>
+        <span className="text-[11px] text-white/22">{time}</span>
+        {message.llmSource && (
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] ${
+              message.llmSource === "gemini"
+                ? "bg-sky-500/10 text-sky-300/80"
+                : message.llmSource === "openai"
+                  ? "bg-emerald-500/10 text-emerald-300/80"
+                  : "bg-amber-500/10 text-amber-300/80"
+            }`}
+          >
+            {message.llmSource === "gemini"
+              ? "Gemini"
+              : message.llmSource === "openai"
+                ? "GPT"
+                : "엔진"}
+          </span>
+        )}
+        {spark && (
+          <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-violet-300/80">
+            반응
+          </span>
+        )}
       </div>
-    </div>
+      <p className="whitespace-pre-wrap text-[13px] leading-[1.65] text-white/82">
+        {message.content}
+      </p>
+    </article>
   );
 }
 
@@ -128,7 +116,7 @@ export function TypingIndicator({ personaId, compact }: TypingIndicatorProps) {
           />
         ))}
       </div>
-      다음 천재가 말 준비 중...
+      {name ? `${name} 생각 중...` : "다음 발언 준비 중..."}
     </div>
   );
 }

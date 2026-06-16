@@ -18,16 +18,18 @@ import {
   providerLabel,
 } from "@/lib/debate-llm-config";
 import { ArenaEffects } from "./ArenaEffects";
-import { RoundTableDebateStage } from "./RoundTableDebateStage";
+import { RoundTablePanel } from "./RoundTablePanel";
 import { DebateTimeline } from "./DebateTimeline";
 import { DebateReportPanel } from "./DebateReportPanel";
 import { DeleteDebateButton } from "./DeleteDebateButton";
+import { MessageBubble, TypingIndicator } from "./MessageBubble";
 
 interface DebateArenaProps {
   debateId: string;
 }
 
 export function DebateArena({ debateId }: DebateArenaProps) {
+  const bottomRef = useRef<HTMLDivElement>(null);
   const knownMessageIds = useRef(new Set<string>());
 
   const [messages, setMessages] = useState<DebateMessage[]>([]);
@@ -184,6 +186,10 @@ export function DebateArena({ debateId }: DebateArenaProps) {
     return () => clearInterval(id);
   }, [debateId, messages.length, status]);
 
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   async function toggleStatus(newStatus: "active" | "paused" | "ended") {
     await fetch(`/api/debates/${debateId}/status`, {
       method: "PATCH",
@@ -214,16 +220,9 @@ export function DebateArena({ debateId }: DebateArenaProps) {
     sourceStats.gemini + sourceStats.openai + sourceStats.engine;
 
   return (
-    <div className="relative flex h-full">
-      <div className="relative flex min-w-0 flex-1 flex-col">
-        <ArenaEffects
-          lastPersonaId={lastPersonaId}
-          flashKey={flashKey}
-          isClash={isClash}
-        />
-
-        <header className="relative z-10 shrink-0 border-b border-white/8 px-6 py-4">
-          <div className="flex items-start justify-between gap-4">
+    <div className="relative flex h-full flex-col">
+      <header className="relative z-10 shrink-0 border-b border-white/8 px-6 py-4">
+        <div className="relative flex items-start justify-between gap-4">
             <div>
               <h1 className="text-lg font-bold text-white">{topic}</h1>
             {topicCtx && (
@@ -353,23 +352,56 @@ export function DebateArena({ debateId }: DebateArenaProps) {
               />
             </div>
           </div>
-        </header>
+      </header>
 
-        <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
-          <RoundTableDebateStage
-            messages={messages}
-            newMessageIds={newMessageIds}
-            nextPersona={nextPersona}
+      <div className="relative flex min-h-0 flex-1">
+        <RoundTablePanel
+          topic={topic}
+          messageCount={messages.length}
+          lastPersonaId={lastPersonaId}
+          nextPersona={nextPersona}
+          status={status}
+          llmMode={llmMode}
+          apiLayout={apiLayout}
+        />
+
+        <section className="relative flex min-w-0 flex-1 flex-col border-r border-white/6">
+          <ArenaEffects
             lastPersonaId={lastPersonaId}
-            status={status}
-            topic={topic}
-            llmMode={llmMode}
-            apiLayout={apiLayout}
+            flashKey={flashKey}
+            isClash={isClash}
           />
-        </div>
-      </div>
+          <div className="flex shrink-0 items-center justify-between border-b border-white/6 px-5 py-2.5">
+            <p className="text-xs font-medium text-white/50">실시간 토론</p>
+            <p className="text-[10px] text-white/30">
+              {messages.length > 0 ? `${messages.length}개 발언` : "대기 중"}
+            </p>
+          </div>
+          <div className="relative flex-1 overflow-y-auto px-5 py-5">
+            {messages.length === 0 && (
+              <div className="flex h-full items-center justify-center text-sm text-white/30">
+                천재 3명이 원탁에 앉는 중...
+              </div>
+            )}
+            <div className="mx-auto max-w-2xl space-y-0">
+              {messages.map((msg, i) => (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  prevMessage={messages[i - 1]}
+                  isNew={newMessageIds.has(msg.id)}
+                />
+              ))}
+              {status === "active" && messages.length > 0 && (
+                <TypingIndicator personaId={nextPersona} />
+              )}
+              <div ref={bottomRef} />
+            </div>
+          </div>
+        </section>
 
-      <DebateTimeline events={timeline} highlightId={highlightTimelineId} />
+        <DebateTimeline events={timeline} highlightId={highlightTimelineId} />
+      </div>
 
       <DebateReportPanel
         report={report}

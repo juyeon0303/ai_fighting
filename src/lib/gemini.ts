@@ -51,7 +51,7 @@ function buildGenerationConfig(
 ): Record<string, unknown> {
   const base = { maxOutputTokens };
   if (!model.startsWith("gemini-3")) {
-    return { ...base, temperature: 0.75 };
+    return { ...base, temperature: 0.82 };
   }
   return base;
 }

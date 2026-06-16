@@ -156,6 +156,12 @@ body {
   animation: debate-seat-pulse 2s ease-in-out infinite;
 }
 
+.round-table-panel {
+  background:
+    radial-gradient(circle at 50% 55%, rgba(120, 80, 40, 0.14), transparent 55%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.2), transparent);
+}
+
 .round-table-stage {
   background:
     radial-gradient(circle at 50% 72%, rgba(120, 80, 40, 0.12), transparent 45%),
@@ -179,5 +185,4 @@ body {
 
 .debate-bubble {
   backdrop-filter: blur(6px);
-  max-width: min(100%, 240px);
 }
