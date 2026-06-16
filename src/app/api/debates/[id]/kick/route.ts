@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDebate, getDebateMessages } from "@/lib/db";
 import {
   kickstartDebate,
-  processDebateTurn,
+  nudgeDebate,
   startDebateWorker,
 } from "@/lib/debate-engine";
 import { sanitizeDebateForClient } from "@/lib/debate-llm-config";
@@ -31,7 +31,12 @@ export async function POST(
     });
   }
 
-  await kickstartDebate(id);
+  const existingMessages = await getDebateMessages(id);
+  if (existingMessages.length === 0) {
+    await kickstartDebate(id);
+  } else {
+    await nudgeDebate(id);
+  }
 
   const freshDebate = await getDebate(id);
   const messages = await getDebateMessages(id);
@@ -57,13 +62,22 @@ export async function GET(
   }
 
   const { id } = await ctx.params;
-  await kickstartDebate(id);
-  const messages = await getDebateMessages(id);
+  startDebateWorker();
   const debate = await getDebate(id);
+  if (debate?.status === "active") {
+    const existingMessages = await getDebateMessages(id);
+    if (existingMessages.length === 0) {
+      await kickstartDebate(id);
+    } else {
+      await nudgeDebate(id);
+    }
+  }
+  const messages = await getDebateMessages(id);
+  const freshDebate = await getDebate(id);
   return NextResponse.json({
     ok: true,
     messageCount: messages.length,
-    status: debate?.status ?? "unknown",
-    endReason: debate?.endReason ?? null,
+    status: freshDebate?.status ?? debate?.status ?? "unknown",
+    endReason: freshDebate?.endReason ?? debate?.endReason ?? null,
   });
 }

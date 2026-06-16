@@ -23,6 +23,7 @@ import {
 import { generateDebateTurn } from "./llm";
 import { isTurnComplete } from "./debate-turn-budget";
 import {
+  DEFAULT_TURN_INTERVAL_MS,
   effectiveTurnIntervalMs,
   enforceNextSpeaker,
   GOD_SPEAKER_ID,
@@ -262,7 +263,10 @@ async function processDebateTurnInner(
           turn.source,
           messageCountAtStart,
         );
-        if (!message) return null;
+        if (!message) {
+          queueNextTurn(debateId, 800);
+          return null;
+        }
         debateEvents.emit("message", { debateId, message });
         const freshDebate = await getDebate(debateId);
         if (freshDebate) {
@@ -299,11 +303,11 @@ async function processDebateTurnInner(
         debateId,
         debate: freshDebate,
       });
-      queueNextTurn(
-        debateId,
-        effectiveTurnIntervalMs(freshDebate.turnIntervalMs),
-      );
     }
+    queueNextTurn(
+      debateId,
+      effectiveTurnIntervalMs(freshDebate?.turnIntervalMs ?? DEFAULT_TURN_INTERVAL_MS),
+    );
 
     return message;
   } catch (error) {
@@ -375,6 +379,30 @@ export function stopDebateWorker(): void {
   workerStarted = false;
 }
 
+/** 진행 중 토론 — 예약된 턴은 유지하고, 멈춘 경우만 가볍게 밀어줌 */
+export async function nudgeDebate(debateId: string): Promise<void> {
+  startDebateWorker();
+
+  if (turnInflight.has(debateId) || scheduledTurnTimers.has(debateId)) return;
+
+  const debate = await getDebate(debateId);
+  if (!debate || debate.status !== "active") return;
+
+  const messages = await getDebateMessages(debateId);
+  if (messages.length === 0) {
+    await processDebateTurn(debateId);
+    return;
+  }
+
+  const now = Date.now();
+  const lastAt = debate.lastTurnAt ?? messages[messages.length - 1]!.createdAt;
+  const elapsed = now - new Date(lastAt).getTime();
+  if (elapsed >= effectiveTurnIntervalMs(debate.turnIntervalMs)) {
+    await processDebateTurn(debateId);
+  }
+}
+
+/** 새 토론·재개 — 즉시 첫/다음 턴 실행 */
 export async function kickstartDebate(debateId: string): Promise<void> {
   startDebateWorker();
   clearScheduledTurn(debateId);
