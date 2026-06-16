@@ -68,7 +68,7 @@ export function DebateReportPanel({
             <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-[var(--brand-gold)]/30 border-t-[var(--brand-gold)]" />
             <p className="text-sm text-white/50">최종 보고서 작성 중...</p>
             <p className="mt-1 text-xs text-white/25">
-              AI들이 토론 결과를 종합하고 있습니다
+              천재들이 머리를 맞대는 중...
             </p>
           </div>
         )}

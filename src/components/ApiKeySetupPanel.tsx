@@ -65,15 +65,26 @@ function KeyField({
 }) {
   const [showKey, setShowKey] = useState(false);
   const keyOk = validate(value);
+  const hasKey = value.trim().length > 0;
+  const masked = hasKey && !showKey;
 
   async function pasteFromClipboard() {
     try {
       const text = await navigator.clipboard.readText();
-      if (text.trim()) onChange(text.trim());
+      if (text.trim()) {
+        onChange(text.trim());
+        setShowKey(false);
+      }
     } catch {
       alert("클립보드 읽기에 실패했습니다.");
     }
   }
+
+  const borderClass = hasKey
+    ? keyOk
+      ? "border-[var(--brand-jade)]/30"
+      : "border-amber-500/30"
+    : "border-[var(--brand-gold)]/12";
 
   return (
     <div className="space-y-1.5">
@@ -90,29 +101,48 @@ function KeyField({
       </div>
       <div className="flex gap-1.5">
         <div className="relative min-w-0 flex-1">
-          <input
-            type={showKey ? "text" : "password"}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            className={`w-full rounded-lg border bg-black/20 px-3 py-2 pr-16 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[var(--brand-gold)]/25 ${
-              value.trim()
-                ? keyOk
-                  ? "border-[var(--brand-jade)]/30"
-                  : "border-amber-500/30"
-                : "border-[var(--brand-gold)]/12"
-            }`}
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <div className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5">
-            <button
-              type="button"
-              onClick={() => setShowKey((v) => !v)}
-              className="rounded px-1.5 py-0.5 text-[10px] text-white/35 hover:text-white/60"
+          {masked ? (
+            <div
+              className={`flex w-full items-center gap-2.5 rounded-lg border bg-black/20 px-3 py-2 pr-[4.5rem] text-sm ${borderClass}`}
             >
-              {showKey ? "숨김" : "보기"}
-            </button>
+              <span
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--brand-gold)]/10 text-[var(--brand-gold)]"
+                aria-hidden
+              >
+                🔑
+              </span>
+              <span className="min-w-0 truncate text-[var(--brand-paper)]/55">
+                키 입력됨
+                <span className="ml-2 tracking-[0.2em] text-[var(--brand-paper)]/30">
+                  ••••••••
+                </span>
+              </span>
+            </div>
+          ) : (
+            <input
+              type={showKey ? "text" : "password"}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onPaste={() => setShowKey(false)}
+              onBlur={() => {
+                if (value.trim()) setShowKey(false);
+              }}
+              placeholder={placeholder}
+              className={`w-full rounded-lg border bg-black/20 px-3 py-2 pr-16 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[var(--brand-gold)]/25 ${borderClass}`}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          )}
+          <div className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5">
+            {hasKey && (
+              <button
+                type="button"
+                onClick={() => setShowKey((v) => !v)}
+                className="rounded px-1.5 py-0.5 text-[10px] text-[var(--brand-gold)]/70 hover:text-[var(--brand-gold-light)]"
+              >
+                {showKey ? "숨김" : "보기"}
+              </button>
+            )}
             <button
               type="button"
               onClick={pasteFromClipboard}
