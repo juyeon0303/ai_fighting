@@ -197,16 +197,10 @@ export function DebateArena({ debateId }: DebateArenaProps) {
       }
     };
 
-    const lastAt = messages[messages.length - 1]?.createdAt;
-    const staleMs = lastAt
-      ? Date.now() - new Date(lastAt).getTime()
-      : Number.POSITIVE_INFINITY;
-    const pollMs = messages.length === 0 || staleMs > 4000 ? 3000 : 6000;
-
     void syncFromKick();
-    const id = setInterval(syncFromKick, pollMs);
+    const id = setInterval(syncFromKick, messages.length === 0 ? 2500 : 5000);
     return () => clearInterval(id);
-  }, [debateId, status, messages.length, messages[messages.length - 1]?.id]);
+  }, [debateId, status, messages.length]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

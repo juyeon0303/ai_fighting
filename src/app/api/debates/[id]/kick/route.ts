@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDebate, getDebateMessages } from "@/lib/db";
 import {
+  kickstartDebate,
   processDebateTurn,
   startDebateWorker,
 } from "@/lib/debate-engine";
@@ -30,8 +31,7 @@ export async function POST(
     });
   }
 
-  startDebateWorker();
-  await processDebateTurn(id);
+  await kickstartDebate(id);
 
   const freshDebate = await getDebate(id);
   const messages = await getDebateMessages(id);
@@ -57,8 +57,7 @@ export async function GET(
   }
 
   const { id } = await ctx.params;
-  startDebateWorker();
-  await processDebateTurn(id);
+  await kickstartDebate(id);
   const messages = await getDebateMessages(id);
   const debate = await getDebate(id);
   return NextResponse.json({

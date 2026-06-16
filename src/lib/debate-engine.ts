@@ -21,9 +21,7 @@ import {
   resolvePersonaLlmRuntime,
 } from "./debate-llm-config";
 import { generateDebateTurn } from "./llm";
-import {
-  isTurnComplete,
-} from "./debate-turn-budget";
+import { isTurnComplete } from "./debate-turn-budget";
 import {
   effectiveTurnIntervalMs,
   enforceNextSpeaker,
@@ -48,7 +46,16 @@ const scheduledTurnTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let workerStarted = false;
 let workerTimer: ReturnType<typeof setInterval> | null = null;
 
-function scheduleNextTurn(debateId: string, delayMs: number): void {
+function clearScheduledTurn(debateId: string): void {
+  const prev = scheduledTurnTimers.get(debateId);
+  if (prev) {
+    clearTimeout(prev);
+    scheduledTurnTimers.delete(debateId);
+  }
+}
+
+/** 다음 턴 예약 */
+function queueNextTurn(debateId: string, delayMs: number): void {
   const prev = scheduledTurnTimers.get(debateId);
   if (prev) clearTimeout(prev);
 
@@ -61,31 +68,9 @@ function scheduleNextTurn(debateId: string, delayMs: number): void {
         }
       })
       .catch(console.error);
-  }, Math.max(300, delayMs));
+  }, Math.max(400, delayMs));
 
   scheduledTurnTimers.set(debateId, timer);
-}
-
-async function planNextTurn(debateId: string): Promise<void> {
-  const debate = await getDebate(debateId);
-  if (!debate || debate.status !== "active") return;
-
-  const messages = await getDebateMessages(debateId);
-  if (messages.length >= debate.maxRounds * TURNS_PER_ROUND) return;
-
-  const backoffUntil = rateLimitBackoffUntil.get(debateId);
-  let delay = effectiveTurnIntervalMs(debate.turnIntervalMs);
-
-  if (backoffUntil && Date.now() < backoffUntil) {
-    delay = backoffUntil - Date.now() + 200;
-  } else {
-    const emptyStreak = emptyTurnStreak.get(debateId) ?? 0;
-    if (emptyStreak > 0) {
-      delay = Math.max(delay, 1200 + emptyStreak * 700);
-    }
-  }
-
-  scheduleNextTurn(debateId, delay);
 }
 
 export async function finalizeDebate(debateId: string): Promise<void> {
@@ -134,11 +119,7 @@ export async function finalizeDebate(debateId: string): Promise<void> {
 }
 
 async function endDebate(debateId: string, endReason?: string): Promise<void> {
-  const pending = scheduledTurnTimers.get(debateId);
-  if (pending) {
-    clearTimeout(pending);
-    scheduledTurnTimers.delete(debateId);
-  }
+  clearScheduledTurn(debateId);
   if (endReason) {
     await setDebateEndReason(debateId, endReason);
   }
@@ -209,6 +190,7 @@ async function processDebateTurnInner(
       console.warn(
         `[debate ${debateId}] Gemini rate limited — retry in ${delayMs}ms (${streak})`,
       );
+      queueNextTurn(debateId, delayMs);
       return null;
     }
     if (turn.stopReason === "missing_key") {
@@ -220,7 +202,7 @@ async function processDebateTurnInner(
       const streak = (emptyTurnStreak.get(debateId) ?? 0) + 1;
       emptyTurnStreak.set(debateId, streak);
       console.warn(
-        `[debate ${debateId}] empty/incomplete turn (${personaId}) — retry later (${streak}/5)`,
+        `[debate ${debateId}] empty/incomplete turn (${personaId}) — retry later (${streak}/8)`,
       );
       const remaining = debate.maxTokenBudget - debate.tokensUsed;
       const reserve = minTokenReserveForDebate(debate);
@@ -233,10 +215,12 @@ async function processDebateTurnInner(
         await endDebate(debateId, "token_budget");
         return null;
       }
-      if (streak >= 5) {
+      if (streak >= 8) {
         emptyTurnStreak.delete(debateId);
         await endDebate(debateId, "empty_turn");
+        return null;
       }
+      queueNextTurn(debateId, 1800 + streak * 500);
       return null;
     }
 
@@ -249,6 +233,7 @@ async function processDebateTurnInner(
       console.warn(
         `[debate ${debateId}] stale turn skipped (${messageCountAtStart} → ${latest.length})`,
       );
+      queueNextTurn(debateId, 800);
       return null;
     }
 
@@ -260,6 +245,7 @@ async function processDebateTurnInner(
           console.warn(
             `[debate ${debateId}] blocked back-to-back speaker (${personaId})`,
           );
+          queueNextTurn(debateId, 800);
           return null;
         }
       }
@@ -302,6 +288,7 @@ async function processDebateTurnInner(
       console.warn(
         `[debate ${debateId}] message save rejected (slot race ${personaId})`,
       );
+      queueNextTurn(debateId, 800);
       return null;
     }
     debateEvents.emit("message", { debateId, message });
@@ -312,11 +299,16 @@ async function processDebateTurnInner(
         debateId,
         debate: freshDebate,
       });
+      queueNextTurn(
+        debateId,
+        effectiveTurnIntervalMs(freshDebate.turnIntervalMs),
+      );
     }
 
     return message;
   } catch (error) {
     console.error(`[debate ${debateId}] turn failed:`, error);
+    queueNextTurn(debateId, 2500);
     return null;
   }
 }
@@ -329,14 +321,7 @@ export async function processDebateTurn(
   const inflight = turnInflight.get(debateId);
   if (inflight) return inflight;
 
-  const promise = (async () => {
-    try {
-      return await processDebateTurnInner(debateId);
-    } finally {
-      await planNextTurn(debateId);
-    }
-  })();
-
+  const promise = processDebateTurnInner(debateId);
   turnInflight.set(debateId, promise);
   try {
     return await promise;
@@ -349,22 +334,25 @@ async function tick(): Promise<void> {
   const activeDebates = await getActiveDebates();
 
   for (const debate of activeDebates) {
+    if (turnInflight.has(debate.id)) continue;
+    if (scheduledTurnTimers.has(debate.id)) continue;
+
     const backoffUntil = rateLimitBackoffUntil.get(debate.id);
     if (backoffUntil && Date.now() < backoffUntil) continue;
 
     const messages = await getDebateMessages(debate.id);
 
     if (messages.length === 0) {
-      await processDebateTurn(debate.id);
+      queueNextTurn(debate.id, 0);
       continue;
     }
 
     const now = Date.now();
-    const lastAt = debate.lastTurnAt ?? messages[messages.length - 1].createdAt;
+    const lastAt = debate.lastTurnAt ?? messages[messages.length - 1]!.createdAt;
     const elapsed = now - new Date(lastAt).getTime();
     if (elapsed < effectiveTurnIntervalMs(debate.turnIntervalMs)) continue;
 
-    await processDebateTurn(debate.id);
+    queueNextTurn(debate.id, 0);
   }
 }
 
@@ -389,6 +377,7 @@ export function stopDebateWorker(): void {
 
 export async function kickstartDebate(debateId: string): Promise<void> {
   startDebateWorker();
+  clearScheduledTurn(debateId);
   await processDebateTurn(debateId);
 }
 
@@ -412,6 +401,7 @@ export async function submitGodIntervention(
   if (!debate || debate.status !== "active") return null;
 
   startDebateWorker();
+  clearScheduledTurn(debateId);
 
   const messages = await getDebateMessages(debateId);
   const round = Math.floor(messages.length / TURNS_PER_ROUND) + 1;
@@ -430,6 +420,6 @@ export async function submitGodIntervention(
     debateEvents.emit("debate-update", { debateId, debate: freshDebate });
   }
 
-  processDebateTurn(debateId).catch(console.error);
+  await processDebateTurn(debateId);
   return message;
 }
