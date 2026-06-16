@@ -18,7 +18,7 @@ import {
   providerLabel,
 } from "@/lib/debate-llm-config";
 import { ArenaEffects } from "./ArenaEffects";
-import { TriangleDebateStage } from "./TriangleDebateStage";
+import { RoundTableDebateStage } from "./RoundTableDebateStage";
 import { DebateTimeline } from "./DebateTimeline";
 import { DebateReportPanel } from "./DebateReportPanel";
 import { DeleteDebateButton } from "./DeleteDebateButton";
@@ -355,8 +355,8 @@ export function DebateArena({ debateId }: DebateArenaProps) {
           </div>
         </header>
 
-        <div className="relative z-10 flex-1 overflow-hidden">
-          <TriangleDebateStage
+        <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
+          <RoundTableDebateStage
             messages={messages}
             newMessageIds={newMessageIds}
             nextPersona={nextPersona}

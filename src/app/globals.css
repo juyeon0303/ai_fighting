@@ -156,14 +156,28 @@ body {
   animation: debate-seat-pulse 2s ease-in-out infinite;
 }
 
-.triangle-stage {
+.round-table-stage {
   background:
-    radial-gradient(ellipse 80% 50% at 50% 55%, rgba(139, 92, 246, 0.08), transparent),
-    radial-gradient(circle at 16% 78%, rgba(139, 92, 246, 0.06), transparent 40%),
-    radial-gradient(circle at 84% 78%, rgba(6, 182, 212, 0.06), transparent 40%),
-    radial-gradient(circle at 50% 14%, rgba(245, 158, 11, 0.08), transparent 35%);
+    radial-gradient(circle at 50% 72%, rgba(120, 80, 40, 0.12), transparent 45%),
+    radial-gradient(ellipse 70% 40% at 50% 30%, rgba(139, 92, 246, 0.06), transparent);
+}
+
+.round-table-rim {
+  background: linear-gradient(145deg, #6b4f2e 0%, #3d2817 45%, #2a1a0e 100%);
+  box-shadow:
+    inset 0 2px 4px rgba(255, 220, 160, 0.15),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.4),
+    0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+.round-table-surface {
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 220, 160, 0.12), transparent 50%),
+    radial-gradient(circle at 50% 50%, #4a3520 0%, #2e2115 55%, #1f160e 100%);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.35);
 }
 
 .debate-bubble {
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(6px);
+  max-width: min(100%, 240px);
 }
