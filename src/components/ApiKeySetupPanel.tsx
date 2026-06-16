@@ -100,11 +100,11 @@ function KeyField({
         </a>
       </div>
       <div className="flex gap-1.5">
-        <div className="relative min-w-0 flex-1">
+        <div
+          className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border bg-black/20 px-3 py-2 text-sm ${borderClass}`}
+        >
           {masked ? (
-            <div
-              className={`flex w-full items-center gap-2.5 rounded-lg border bg-black/20 px-3 py-2 pr-[4.5rem] text-sm ${borderClass}`}
-            >
+            <>
               <span
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--brand-gold)]/10 text-[var(--brand-gold)]"
                 aria-hidden
@@ -113,11 +113,8 @@ function KeyField({
               </span>
               <span className="min-w-0 truncate text-[var(--brand-paper)]/55">
                 키 입력됨
-                <span className="ml-2 tracking-[0.2em] text-[var(--brand-paper)]/30">
-                  ••••••••
-                </span>
               </span>
-            </div>
+            </>
           ) : (
             <input
               type={showKey ? "text" : "password"}
@@ -128,29 +125,29 @@ function KeyField({
                 if (value.trim()) setShowKey(false);
               }}
               placeholder={placeholder}
-              className={`w-full rounded-lg border bg-black/20 px-3 py-2 pr-16 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[var(--brand-gold)]/25 ${borderClass}`}
+              className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/25"
               autoComplete="off"
               spellCheck={false}
             />
           )}
-          <div className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5">
-            {hasKey && (
-              <button
-                type="button"
-                onClick={() => setShowKey((v) => !v)}
-                className="rounded px-1.5 py-0.5 text-[10px] text-[var(--brand-gold)]/70 hover:text-[var(--brand-gold-light)]"
-              >
-                {showKey ? "숨김" : "보기"}
-              </button>
-            )}
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5 self-center">
+          {hasKey && (
             <button
               type="button"
-              onClick={pasteFromClipboard}
-              className="rounded px-1.5 py-0.5 text-[10px] text-white/35 hover:text-white/60"
+              onClick={() => setShowKey((v) => !v)}
+              className="rounded px-1.5 py-0.5 text-[10px] text-[var(--brand-gold)]/70 hover:text-[var(--brand-gold-light)]"
             >
-              붙여넣기
+              {showKey ? "숨김" : "보기"}
             </button>
-          </div>
+          )}
+          <button
+            type="button"
+            onClick={pasteFromClipboard}
+            className="rounded px-1.5 py-0.5 text-[10px] text-white/35 hover:text-white/60"
+          >
+            붙여넣기
+          </button>
         </div>
       </div>
     </div>
