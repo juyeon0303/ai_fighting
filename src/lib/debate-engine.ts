@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { analyzeRoundForTimeline, generateFinalReport } from "./analysis";
 import {
   addMessage,
+  tryAddMessage,
   addTimelineEvent,
   addTokenUsage,
   getActiveDebates,
@@ -226,13 +227,14 @@ async function processDebateTurnInner(
     if (turn.tokensUsed > 0) {
       const updated = await addTokenUsage(debateId, turn.tokensUsed);
       if (updated && isTokenBudgetExceeded(updated)) {
-        const message = await addMessage(
+        const message = await tryAddMessage(
           debateId,
           personaId,
           turn.content,
           round,
           turn.source,
         );
+        if (!message) return null;
         debateEvents.emit("message", { debateId, message });
         const freshDebate = await getDebate(debateId);
         if (freshDebate) {
@@ -246,13 +248,19 @@ async function processDebateTurnInner(
       }
     }
 
-    const message = await addMessage(
+    const message = await tryAddMessage(
       debateId,
       personaId,
       turn.content,
       round,
       turn.source,
     );
+    if (!message) {
+      console.warn(
+        `[debate ${debateId}] message save rejected (slot race ${personaId})`,
+      );
+      return null;
+    }
     debateEvents.emit("message", { debateId, message });
 
     const freshDebate = await getDebate(debateId);

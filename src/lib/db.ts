@@ -5,7 +5,7 @@ import { encryptApiKey } from "./api-key-crypto";
 import type { UserApiInput } from "./debate-llm-config";
 import { validateUserApiInput } from "./debate-llm-config";
 import { normalizeGeminiModel } from "./gemini-models";
-import { DEFAULT_TURN_INTERVAL_MS } from "./personas";
+import { DEFAULT_TURN_INTERVAL_MS, canAppendTurn, normalizePersonaId } from "./personas";
 import { normalizeOpenaiModel } from "./openai-models";
 import { getSupabase, isSupabaseEnabled } from "./supabase";
 import type {
@@ -362,6 +362,12 @@ export async function addMessage(
   const sb = getSupabase();
 
   if (sb) {
+    const current = await getDebateMessages(debateId);
+    const pid = normalizePersonaId(personaId);
+    if (!canAppendTurn(current, pid)) {
+      throw new Error("turn slot taken");
+    }
+
     let payload: Record<string, unknown> = {
       debate_id: debateId,
       persona_id: personaId,
@@ -401,6 +407,12 @@ export async function addMessage(
   }
 
   const db = ensureFileDb();
+  const current = db.messages.filter((m) => m.debateId === debateId);
+  const pid = normalizePersonaId(personaId);
+  if (!canAppendTurn(current, pid)) {
+    throw new Error("turn slot taken");
+  }
+
   const message: DebateMessage = {
     id: uuidv4(),
     debateId,
@@ -420,6 +432,26 @@ export async function addMessage(
   }
   saveFileDb(db);
   return message;
+}
+
+/** 저장 직전 슬롯 재검증 — 레이스·순서 꼬임 방지 */
+export async function tryAddMessage(
+  debateId: string,
+  personaId: DebateMessage["personaId"],
+  content: string,
+  round: number,
+  llmSource?: MessageLlmSource | null,
+): Promise<DebateMessage | null> {
+  const pid = normalizePersonaId(personaId);
+  const before = await getDebateMessages(debateId);
+  if (!canAppendTurn(before, pid)) return null;
+
+  try {
+    return await addMessage(debateId, personaId, content, round, llmSource);
+  } catch (err) {
+    if (err instanceof Error && err.message === "turn slot taken") return null;
+    throw err;
+  }
 }
 
 export async function addTimelineEvent(

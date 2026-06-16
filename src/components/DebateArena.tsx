@@ -436,7 +436,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                 );
               })}
               {status === "active" && messages.length > 0 && (
-                <TypingIndicator personaId={nextPersona} />
+                <TypingIndicator />
               )}
               <div ref={bottomRef} />
             </div>

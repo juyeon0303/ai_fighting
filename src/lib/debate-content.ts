@@ -15,6 +15,9 @@ export { topicUsesSearch };
 const META_LINE =
   /^\s*\*.*\*?\s*$|casual tone|Yes\.|^\s*-\s*(GE|MI|NI|자|강|세|J|K|S)\s*:/i;
 
+const ENGLISH_STAGE =
+  /\([^)]*[A-Za-z]{3,}[^)]*\)|^\(?Metaphor\b|^\(?Note\b/i;
+
 const FAKE_CITATION =
   /(?:스탠퍼드|하버드|MIT|옥스퍼드).{0,20}(?:연구|실험|대학)/;
 
@@ -39,6 +42,8 @@ export function isLowQualityTurn(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
   if ((t.match(/결국/g) ?? []).length >= 3) return true;
+  if (ENGLISH_STAGE.test(t)) return true;
+  if (/[A-Za-z]{5,}/.test(t) && (t.match(/[가-힣]/g)?.length ?? 0) < 8) return true;
   return FAKE_CITATION.test(t) && /(?:19|20)\d{2}년/.test(t);
 }
 
@@ -76,6 +81,7 @@ export function personaSystemInstruction(
     "직전 말에 자연스럽게 이어져. 매번 '반박합니다' 같은 토론 말투는 금지.",
     "네 예전 말을 남 말처럼 만들거나 자기 말을 까지 마.",
     "꾸며낸 연구·대학 실험·통계 인용 금지. 확실치 않으면 단정 짧게.",
+    "영어·메타·괄호 설명·비유 라벨 붙이지 마. 한국어 반말만.",
     "이름·콜론(:) 붙이지 마.",
   ].join(" ");
 }
@@ -185,6 +191,8 @@ export function sanitizeTurnOutput(raw: string): string {
 
   let text = lines.join(" ").replace(/\s+/g, " ").trim();
   text = text.replace(/^(?:GE|MI|NI|자|강|세|G|P|T|J|K|S)\s*:\s*/i, "");
+  text = text.replace(/\([^)]*[A-Za-z]{3,}[^)]*\)\s*[:*]*\s*/gi, "");
+  text = text.replace(/^\*+\s*/g, "");
   return text.trim();
 }
 

@@ -47,7 +47,7 @@ function main() {
 
   const turnCases: Array<[string, boolean]> = [
     ["근데 붕어빵처럼 각각 다른 존재라고 단정 짓", false],
-    ["뉴턴이 만든 기계가 일반적으론 훌륭해도 미세한 정밀도까지는 다", false],
+    ["(Metaphor of hot bath vs cold splash):* 그치만 그 붕 뜨는", false],
     ["그건 좀 맞는 말이야.", true],
     ["그렇지, 그건 핵심이야.", true],
     ["완전히 다른 거라고 단정", false],
