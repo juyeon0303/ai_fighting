@@ -85,10 +85,14 @@ export function MessageBubble({
 
 interface TypingIndicatorProps {
   compact?: boolean;
+  speakerName?: string;
 }
 
-export function TypingIndicator({ compact }: TypingIndicatorProps) {
+export function TypingIndicator({ compact, speakerName }: TypingIndicatorProps) {
   const dotColor = "var(--brand-gold)";
+  const label = speakerName
+    ? `${speakerName} 발언을 기다리는 중...`
+    : "발언을 기다리는 중...";
 
   if (compact) {
     return (
@@ -102,7 +106,7 @@ export function TypingIndicator({ compact }: TypingIndicatorProps) {
             />
           ))}
         </div>
-        발언을 기다리는 중...
+        {label}
       </div>
     );
   }
@@ -118,7 +122,7 @@ export function TypingIndicator({ compact }: TypingIndicatorProps) {
           />
         ))}
       </div>
-      발언을 기다리는 중...
+      {label}
     </div>
   );
 }

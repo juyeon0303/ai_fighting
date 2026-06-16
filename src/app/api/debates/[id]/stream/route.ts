@@ -5,7 +5,7 @@ import {
   getTimelineEvents,
 } from "@/lib/db";
 import { sanitizeDebateForClient } from "@/lib/debate-llm-config";
-import { debateEvents, backfillTimeline, startDebateWorker } from "@/lib/debate-engine";
+import { debateEvents, backfillTimeline, processDebateTurn, startDebateWorker } from "@/lib/debate-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -102,8 +102,20 @@ export async function GET(
         controller.enqueue(encoder.encode(": heartbeat\n\n"));
       }, 15000);
 
+      const turnNudge = setInterval(() => {
+        if (_request.signal.aborted) return;
+        getDebate(id)
+          .then((d) => {
+            if (d?.status === "active") {
+              processDebateTurn(id).catch(console.error);
+            }
+          })
+          .catch(console.error);
+      }, 3000);
+
       const cleanup = () => {
         clearInterval(heartbeat);
+        clearInterval(turnNudge);
         debateEvents.off("message", onMessage);
         debateEvents.off("timeline", onTimeline);
         debateEvents.off("report-status", onReportStatus);

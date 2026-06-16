@@ -11,10 +11,12 @@ import type {
 import { parseTopic, getModeLabel } from "@/lib/topic-context";
 import {
   DEBATE_TURN_ORDER,
+  getPersona,
   normalizePersonaId,
 } from "@/lib/personas";
 import {
   layoutLabel,
+  personaProvider,
   providerLabel,
   isTokenBudgetLow,
   MIN_TURN_TOKEN_RESERVE,
@@ -231,6 +233,14 @@ export function DebateArena({ debateId }: DebateArenaProps) {
     return DEBATE_TURN_ORDER[messages.length % DEBATE_TURN_ORDER.length];
   })();
 
+  const waitingSpeakerName =
+    nextPersona && status === "active"
+      ? getPersona(
+          nextPersona,
+          personaProvider(apiLayout ?? "gemini_only", nextPersona),
+        ).name
+      : undefined;
+
   const topicCtx = topic ? parseTopic(topic) : null;
 
   const sourceStats = messages.reduce(
@@ -438,7 +448,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                 );
               })}
               {status === "active" && messages.length > 0 && (
-                <TypingIndicator />
+                <TypingIndicator speakerName={waitingSpeakerName} />
               )}
               <div ref={bottomRef} />
             </div>

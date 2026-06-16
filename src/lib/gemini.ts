@@ -18,6 +18,8 @@ export type GeminiContent = { role: "user" | "model"; text: string };
 export type GeminiRequestOptions = {
   googleSearch?: boolean;
   temperature?: number;
+  /** 429면 폴백 루프 없이 즉시 rate_limit 반환 (RPM 과호출 방지) */
+  fastFailRateLimit?: boolean;
 };
 
 export function isLikelyGeminiKey(key: string): boolean {
@@ -223,6 +225,14 @@ export async function requestGeminiChat(
             if (stop === "auth") sawAuthError = true;
             if (stop === "quota") sawQuotaError = true;
             if (stop === "rate_limit") sawRateLimitError = true;
+            if (options.fastFailRateLimit && stop === "rate_limit") {
+              return {
+                content: null,
+                tokensUsed: 0,
+                stopReason: "rate_limit",
+                truncated: false,
+              };
+            }
             continue;
           }
 

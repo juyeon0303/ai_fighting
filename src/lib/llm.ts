@@ -167,7 +167,7 @@ async function callProviderTurn(
       system,
       contents,
       maxOutputTokens(personaId, save),
-      { googleSearch, temperature },
+      { googleSearch, temperature, fastFailRateLimit: true },
     );
     return {
       content: result.content,
