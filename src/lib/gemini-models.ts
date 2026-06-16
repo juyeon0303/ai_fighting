@@ -4,7 +4,7 @@ export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash";
 export const GEMINI_MODEL_OPTIONS = [
   {
     id: "gemini-3.5-flash",
-    label: "Gemini 3.5 Flash (추천 · 앱과 동일)",
+    label: "Gemini 3.5 Flash (추천 · 빠름)",
   },
   {
     id: "gemini-3.1-flash-lite",

@@ -4,8 +4,10 @@ import {
   buildDebateRetryHint,
   buildGeminiContents,
   buildOpenAiChatTurns,
+  isLowQualityTurn,
   personaSystemInstruction,
   sanitizeTurnOutput,
+  scrubLowQualityPhrases,
 } from "./debate-content";
 import type { PersonaLlmRuntime } from "./debate-llm-config";
 import { requestGeminiChat } from "./gemini";
@@ -52,8 +54,10 @@ function mapApiError(error: unknown): LlmStopReason {
 function normalizeTurn(raw: string | null, personaId: PersonaId): string {
   if (!raw?.trim()) return "";
   const cleaned = sanitizeTurnOutput(raw);
-  const clamped = clampTurnContent(cleaned, personaId);
+  const scrubbed = scrubLowQualityPhrases(cleaned);
+  const clamped = clampTurnContent(scrubbed, personaId);
   if (isIncompleteTurn(clamped)) return "";
+  if (isLowQualityTurn(clamped)) return "";
   return clamped;
 }
 
@@ -75,7 +79,7 @@ async function requestOpenAiChatTurn(
         })),
       ],
       max_tokens: maxOutputTokens(personaId),
-      temperature: 0.95,
+      temperature: 0.75,
     });
 
     return {
@@ -99,6 +103,7 @@ async function callProviderTurn(
   history: DebateMessage[],
   personaId: PersonaId,
   retry: boolean,
+  qualityRetry: boolean,
 ): Promise<{ content: string | null; tokensUsed: number; stopReason: LlmStopReason }> {
   const provider = runtime.provider;
 
@@ -107,7 +112,7 @@ async function callProviderTurn(
     if (retry) {
       const last = contents[contents.length - 1];
       if (last?.role === "user") {
-        last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint()}`;
+        last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry)}`;
       }
     }
     return requestGeminiChat(
@@ -116,16 +121,17 @@ async function callProviderTurn(
       system,
       contents,
       maxOutputTokens(personaId),
+      { googleSearch: true },
     );
   }
 
   const turns = buildOpenAiChatTurns(topic, history, personaId, "openai");
-  if (retry) {
-    const last = turns[turns.length - 1];
-    if (last?.role === "user") {
-      last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint()}`;
+    if (retry) {
+      const last = turns[turns.length - 1];
+      if (last?.role === "user") {
+        last.text = `${last.text}\n\n[다시] ${buildDebateRetryHint(qualityRetry)}`;
+      }
     }
-  }
   return requestOpenAiChatTurn(
     new OpenAI({ apiKey: runtime.apiKey }),
     runtime.model,
@@ -159,7 +165,7 @@ export async function generateDebateTurn(
   let totalTokens = 0;
   let lastStopReason: LlmStopReason = null;
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const result = await callProviderTurn(
       topic,
       runtime,
@@ -167,6 +173,7 @@ export async function generateDebateTurn(
       history,
       personaId,
       attempt > 0,
+      attempt >= 1,
     );
     totalTokens += result.tokensUsed;
 

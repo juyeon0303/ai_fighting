@@ -11,8 +11,14 @@ const GEMINI_BASE =
   "https://generativelanguage.googleapis.com/v1beta/models";
 
 const FETCH_TIMEOUT_MS = 45_000;
+const FETCH_TIMEOUT_SEARCH_MS = 90_000;
 
 export type GeminiContent = { role: "user" | "model"; text: string };
+
+export type GeminiRequestOptions = {
+  /** Google Search grounding — 사실·최신 정보 확인용 */
+  googleSearch?: boolean;
+};
 
 export function isLikelyGeminiKey(key: string): boolean {
   const k = key.trim();
@@ -45,7 +51,7 @@ function buildGenerationConfig(
 ): Record<string, unknown> {
   const base = { maxOutputTokens };
   if (!model.startsWith("gemini-3")) {
-    return { ...base, temperature: 0.95 };
+    return { ...base, temperature: 0.75 };
   }
   return base;
 }
@@ -53,9 +59,10 @@ function buildGenerationConfig(
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
+  timeoutMs = FETCH_TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
@@ -63,11 +70,30 @@ async function fetchWithTimeout(
   }
 }
 
+function buildGeminiBody(
+  system: string,
+  apiContents: Array<{ role: string; parts: Array<{ text: string }> }>,
+  model: string,
+  outputTokenLimit: number,
+  googleSearch: boolean,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: apiContents,
+    generationConfig: buildGenerationConfig(model, outputTokenLimit),
+  };
+  if (googleSearch) {
+    body.tools = [{ google_search: {} }];
+  }
+  return body;
+}
+
 async function callGeminiOnce(
   apiKey: string,
   model: string,
   body: object,
   auth: "header" | "query",
+  timeoutMs = FETCH_TIMEOUT_MS,
 ): Promise<{ ok: boolean; status: number; data?: unknown; errorText?: string }> {
   const base = `${GEMINI_BASE}/${model}:generateContent`;
   const url =
@@ -82,11 +108,15 @@ async function callGeminiOnce(
     headers["x-goog-api-key"] = apiKey.trim();
   }
 
-  const res = await fetchWithTimeout(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    },
+    timeoutMs,
+  );
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => "");
@@ -129,6 +159,7 @@ export async function requestGeminiChat(
   system: string,
   contents: GeminiContent[],
   outputTokenLimit = 1024,
+  options: GeminiRequestOptions = {},
 ): Promise<{
   content: string | null;
   tokensUsed: number;
@@ -144,49 +175,57 @@ export async function requestGeminiChat(
     parts: [{ text: c.text }],
   }));
 
+  const searchModes = options.googleSearch ? [true, false] : [false];
+
   for (const candidateModel of modelCandidates(model)) {
-    const body = {
-      systemInstruction: { parts: [{ text: system }] },
-      contents: apiContents,
-      generationConfig: buildGenerationConfig(
+    for (const useSearch of searchModes) {
+      const body = buildGeminiBody(
+        system,
+        apiContents,
         candidateModel,
         outputTokenLimit,
-      ),
-    };
+        useSearch,
+      );
+      const timeoutMs = useSearch ? FETCH_TIMEOUT_SEARCH_MS : FETCH_TIMEOUT_MS;
 
-    for (const auth of authModes(apiKey)) {
-      try {
-        const result = await callGeminiOnce(
-          apiKey,
-          candidateModel,
-          body,
-          auth,
-        );
+      for (const auth of authModes(apiKey)) {
+        try {
+          const result = await callGeminiOnce(
+            apiKey,
+            candidateModel,
+            body,
+            auth,
+            timeoutMs,
+          );
 
-        if (!result.ok) {
-          lastStatus = result.status;
-          lastError = result.errorText ?? "";
-          const stop = mapGeminiError(result.status);
+          if (!result.ok) {
+            lastStatus = result.status;
+            lastError = result.errorText ?? "";
+            const stop = mapGeminiError(result.status);
+            console.warn(
+              `[gemini] ${candidateModel} (${auth}${useSearch ? ", search" : ""}) → ${result.status}`,
+              lastError,
+            );
+            if (stop === "auth") sawAuthError = true;
+            if (stop === "quota") sawQuotaError = true;
+            continue;
+          }
+
+          const text = extractGeminiText(result.data);
+          const tokensUsed = extractGeminiTokens(result.data);
+
+          if (text) {
+            return { content: text, tokensUsed, stopReason: null };
+          }
+
+          lastError = `empty response (${candidateModel})`;
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : String(err);
           console.warn(
-            `[gemini] ${candidateModel} (${auth}) → ${result.status}`,
+            `[gemini] ${candidateModel} (${auth}${useSearch ? ", search" : ""}) failed:`,
             lastError,
           );
-          if (stop === "auth") sawAuthError = true;
-          if (stop === "quota") sawQuotaError = true;
-          continue;
         }
-
-        const text = extractGeminiText(result.data);
-        const tokensUsed = extractGeminiTokens(result.data);
-
-        if (text) {
-          return { content: text, tokensUsed, stopReason: null };
-        }
-
-        lastError = `empty response (${candidateModel})`;
-      } catch (err) {
-        lastError = err instanceof Error ? err.message : String(err);
-        console.warn(`[gemini] ${candidateModel} (${auth}) failed:`, lastError);
       }
     }
   }
