@@ -10,25 +10,15 @@ import { estimateTokenBudget } from "@/lib/token-budget-guide";
 import { isLikelyGeminiKey } from "@/lib/gemini";
 import { GEMINI_MODEL_OPTIONS } from "@/lib/gemini-models";
 import { OPENAI_MODEL_OPTIONS } from "@/lib/openai-models";
-import { personaDisplayName, personaNamesLabel } from "@/lib/personas";
+import { personaDisplayName } from "@/lib/personas";
 
 const OPENAI_KEYS_URL = "https://platform.openai.com/api-keys";
 const GEMINI_KEYS_URL = "https://aistudio.google.com/apikey";
 
-type LlmMode = "user_api";
-
-const LAYOUT_OPTIONS: Array<{
-  id: ApiLayout;
-  title: string;
-  desc: string;
-}> = [
-  { id: "gemini_only", title: "Gemini 3명", desc: "Gemini 키 1개 · 추천" },
-  { id: "openai_only", title: "GPT 3명", desc: "OpenAI 키 1개" },
-  {
-    id: "gpt_vs_gemini",
-    title: "GPT vs Gemini",
-    desc: "두 AI가 교차 토론",
-  },
+const LAYOUT_OPTIONS: Array<{ id: ApiLayout; title: string }> = [
+  { id: "gemini_only", title: "Gemini" },
+  { id: "openai_only", title: "GPT" },
+  { id: "gpt_vs_gemini", title: "Mix" },
 ];
 
 const BUDGET_PRESETS = [10_000, 30_000, 100_000, 500_000];
@@ -63,12 +53,14 @@ function KeyField({
   onChange,
   placeholder,
   validate,
+  helpUrl,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
   validate: (k: string) => boolean;
+  helpUrl: string;
 }) {
   const [showKey, setShowKey] = useState(false);
   const keyOk = validate(value);
@@ -78,56 +70,58 @@ function KeyField({
       const text = await navigator.clipboard.readText();
       if (text.trim()) onChange(text.trim());
     } catch {
-      alert("클립보드 읽기에 실패했습니다. 직접 붙여넣어 주세요.");
+      alert("클립보드 읽기에 실패했습니다.");
     }
   }
 
   return (
-    <div>
-      <label className="mb-1.5 block text-xs text-white/45">{label}</label>
-      <div className="flex gap-2">
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <label className="text-xs text-white/50">{label}</label>
+        <a
+          href={helpUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] text-white/30 hover:text-white/55"
+        >
+          키 발급 →
+        </a>
+      </div>
+      <div className="flex gap-1.5">
         <div className="relative min-w-0 flex-1">
           <input
             type={showKey ? "text" : "password"}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 pr-10 text-sm text-white outline-none focus:border-emerald-500/40"
+            className={`w-full rounded-lg border bg-black/20 px-3 py-2 pr-16 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-white/20 ${
+              value.trim()
+                ? keyOk
+                  ? "border-emerald-500/30"
+                  : "border-amber-500/30"
+                : "border-white/10"
+            }`}
             autoComplete="off"
             spellCheck={false}
           />
-          <button
-            type="button"
-            onClick={() => setShowKey((v) => !v)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs text-white/40 hover:text-white/70"
-            aria-label={showKey ? "키 숨기기" : "키 보기"}
-          >
-            {showKey ? "숨김" : "보기"}
-          </button>
+          <div className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5">
+            <button
+              type="button"
+              onClick={() => setShowKey((v) => !v)}
+              className="rounded px-1.5 py-0.5 text-[10px] text-white/35 hover:text-white/60"
+            >
+              {showKey ? "숨김" : "보기"}
+            </button>
+            <button
+              type="button"
+              onClick={pasteFromClipboard}
+              className="rounded px-1.5 py-0.5 text-[10px] text-white/35 hover:text-white/60"
+            >
+              붙여넣기
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={pasteFromClipboard}
-          className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 hover:bg-white/10"
-        >
-          붙여넣기
-        </button>
       </div>
-      <p
-        className={`mt-1.5 text-xs ${
-          value.trim()
-            ? keyOk
-              ? "text-emerald-400/80"
-              : "text-amber-400/80"
-            : "text-white/35"
-        }`}
-      >
-        {value.trim()
-          ? keyOk
-            ? "키 형식 OK"
-            : "키 형식을 확인해 주세요"
-          : "발급한 키를 붙여넣으면 됩니다"}
-      </p>
     </div>
   );
 }
@@ -150,7 +144,7 @@ export function ApiKeySetupPanel({
   rememberKey,
   onRememberKeyChange,
 }: ApiKeySetupPanelProps) {
-  const [guideOpen, setGuideOpen] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const budgetGuide = useMemo(
     () => estimateTokenBudget(maxTokenBudget, layout, undefined, tokenSaveMode),
@@ -161,193 +155,113 @@ export function ApiKeySetupPanel({
   const needsGemini = layout === "gemini_only" || layout === "gpt_vs_gemini";
 
   return (
-    <div className="space-y-3">
-      <div className="space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-emerald-200/90">
-              API 키 · 모델 설정
-            </p>
-            <button
-              type="button"
-              onClick={() => setGuideOpen((v) => !v)}
-              className="text-xs text-white/45 hover:text-white/70"
+    <div className="space-y-4">
+      <div className="flex rounded-lg border border-white/10 bg-black/15 p-0.5">
+        {LAYOUT_OPTIONS.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onLayoutChange(opt.id)}
+            className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
+              layout === opt.id
+                ? "bg-white/10 text-white"
+                : "text-white/45 hover:text-white/70"
+            }`}
+          >
+            {opt.title}
+          </button>
+        ))}
+      </div>
+
+      {layout === "gpt_vs_gemini" && (
+        <p className="text-[11px] text-white/35">
+          GPT {personaDisplayName("atlas", "openai")} · Gemini{" "}
+          {personaDisplayName("cipher", "gemini")}·
+          {personaDisplayName("ember", "gemini")}
+        </p>
+      )}
+
+      <div className="space-y-3">
+        {needsGemini && (
+          <KeyField
+            label="Gemini API 키"
+            value={geminiKey}
+            onChange={onGeminiKeyChange}
+            placeholder="AIza... 또는 AQ...."
+            validate={isLikelyGeminiKey}
+            helpUrl={GEMINI_KEYS_URL}
+          />
+        )}
+        {needsOpenai && (
+          <KeyField
+            label="OpenAI API 키"
+            value={openaiKey}
+            onChange={onOpenaiKeyChange}
+            placeholder="sk-..."
+            validate={isLikelyOpenAiKey}
+            helpUrl={OPENAI_KEYS_URL}
+          />
+        )}
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {needsGemini && (
+          <label className="block text-[11px] text-white/40">
+            Gemini 모델
+            <select
+              value={geminiModel}
+              onChange={(e) => onGeminiModelChange(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-sm text-white outline-none focus:border-white/20"
             >
-              {guideOpen ? "가이드 접기" : "키 찾는 법 보기"}
-            </button>
-          </div>
+              {GEMINI_MODEL_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {needsOpenai && (
+          <label className="block text-[11px] text-white/40">
+            GPT 모델
+            <select
+              value={openaiModel}
+              onChange={(e) => onOpenaiModelChange(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-sm text-white outline-none focus:border-white/20"
+            >
+              {OPENAI_MODEL_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
 
-          <div className="grid gap-2 sm:grid-cols-3">
-            {LAYOUT_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => onLayoutChange(opt.id)}
-                className={`rounded-xl border px-3 py-2.5 text-left transition ${
-                  layout === opt.id
-                    ? "border-emerald-500/50 bg-emerald-500/15 text-white"
-                    : "border-white/10 bg-black/20 text-white/55 hover:border-white/20"
-                }`}
-              >
-                <p className="text-xs font-semibold">{opt.title}</p>
-                <p className="mt-0.5 text-[10px] opacity-70">{opt.desc}</p>
-              </button>
-            ))}
-          </div>
+      <button
+        type="button"
+        onClick={() => setAdvancedOpen((v) => !v)}
+        className="flex w-full items-center justify-between rounded-lg border border-white/8 px-3 py-2 text-left text-xs text-white/45 transition hover:border-white/15 hover:text-white/60"
+      >
+        <span>예산 · 옵션</span>
+        <span className="text-white/25">{advancedOpen ? "−" : "+"}</span>
+      </button>
 
-          {layout === "gpt_vs_gemini" && (
-            <div className="rounded-xl border border-violet-500/20 bg-violet-500/8 px-3 py-2 text-xs text-white/60">
-              <span className="text-violet-300">GPT</span>: {personaDisplayName("atlas", "openai")} ·{" "}
-              <span className="text-blue-300">Gemini</span>:{" "}
-              {personaDisplayName("cipher", "gemini")}·
-              {personaDisplayName("ember", "gemini")} — 서로
-              다른 AI가 맞붙습니다
-            </div>
-          )}
-
-          {guideOpen && (
-            <div className="space-y-3 rounded-xl border border-white/8 bg-black/25 p-3 text-xs leading-relaxed text-white/60">
-              {needsOpenai && (
-                <div>
-                  <p className="mb-2 font-medium text-white/75">
-                    OpenAI 키 발급
-                  </p>
-                  <ol className="list-decimal space-y-1 pl-4">
-                    <li>
-                      <a
-                        href="https://platform.openai.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-violet-300 underline-offset-2 hover:underline"
-                      >
-                        platform.openai.com
-                      </a>
-                      로그인 → API keys
-                    </li>
-                    <li>
-                      Create new secret key →{" "}
-                      <code className="text-white/70">sk-...</code> 복사
-                    </li>
-                  </ol>
-                  <a
-                    href={OPENAI_KEYS_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2 inline-flex rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15"
-                  >
-                    OpenAI 키 발급 →
-                  </a>
-                </div>
-              )}
-              {needsGemini && (
-                <div>
-                  <p className="mb-2 font-medium text-white/75">
-                    Gemini 키 발급 (무료 티어 토큰 많음)
-                  </p>
-                  <ol className="list-decimal space-y-1 pl-4">
-                    <li>
-                      <a
-                        href="https://aistudio.google.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-300 underline-offset-2 hover:underline"
-                      >
-                        aistudio.google.com
-                      </a>
-                      로그인 → Get API key
-                    </li>
-                    <li>
-                      <code className="text-white/70">AIza...</code> 또는{" "}
-                      <code className="text-white/70">AQ....</code> 키 복사
-                    </li>
-                  </ol>
-                  <p className="mt-2 text-white/45">
-                    2026년부터 신규 키는 <code className="text-white/60">AQ.</code>로
-                    시작하는 경우가 많음 (AIza도 계속 사용 가능).
-                    토큰이 0이면 API 연결 실패 — 키 재발급, 모델을 flash-lite로
-                    변경, 또는 이 토론 삭제 후 새로 시작해 보세요.
-                  </p>
-                  <a
-                    href={GEMINI_KEYS_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2 inline-flex rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15"
-                  >
-                    Gemini 키 발급 →
-                  </a>
-                </div>
-              )}
-            </div>
-          )}
-
-          {needsOpenai && (
-            <KeyField
-              label="OpenAI API 키"
-              value={openaiKey}
-              onChange={onOpenaiKeyChange}
-              placeholder="sk-proj-... 또는 sk-..."
-              validate={isLikelyOpenAiKey}
-            />
-          )}
-
-          {needsGemini && (
-            <KeyField
-              label="Gemini API 키"
-              value={geminiKey}
-              onChange={onGeminiKeyChange}
-              placeholder="AIza... 또는 AQ...."
-              validate={isLikelyGeminiKey}
-            />
-          )}
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {needsOpenai && (
-              <label className="block text-xs text-white/45">
-                GPT 모델
-                <select
-                  value={openaiModel}
-                  onChange={(e) => onOpenaiModelChange(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
-                >
-                  {OPENAI_MODEL_OPTIONS.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {needsGemini && (
-              <label className="block text-xs text-white/45">
-                Gemini 모델
-                <select
-                  value={geminiModel}
-                  onChange={(e) => onGeminiModelChange(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
-                >
-                  {GEMINI_MODEL_OPTIONS.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-          </div>
-
+      {advancedOpen && (
+        <div className="space-y-3 rounded-lg border border-white/8 bg-black/10 p-3">
           <div>
-            <label className="mb-1.5 block text-xs text-white/45">
-              토큰 예산 (이 토론 최대 사용량)
-            </label>
-            <div className="flex flex-wrap gap-2">
+            <p className="mb-2 text-[11px] text-white/40">토큰 예산</p>
+            <div className="flex flex-wrap gap-1.5">
               {BUDGET_PRESETS.map((preset) => (
                 <button
                   key={preset}
                   type="button"
                   onClick={() => onMaxTokenBudgetChange(preset)}
-                  className={`rounded-lg border px-3 py-1.5 text-xs transition ${
+                  className={`rounded-md border px-2.5 py-1 text-[11px] transition ${
                     maxTokenBudget === preset
-                      ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-200"
-                      : "border-white/10 bg-black/20 text-white/50 hover:border-white/20"
+                      ? "border-white/25 bg-white/10 text-white"
+                      : "border-white/10 text-white/45 hover:border-white/20"
                   }`}
                 >
                   {(preset / 1000).toFixed(0)}k
@@ -364,57 +278,38 @@ export function ApiKeySetupPanel({
                   Number(e.target.value) || DEFAULT_MAX_TOKEN_BUDGET,
                 )
               }
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 text-sm text-white outline-none focus:border-white/20"
             />
+            <p className="mt-2 text-[11px] leading-relaxed text-white/30">
+              {budgetGuide.summary}
+            </p>
           </div>
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-cyan-500/25 bg-cyan-500/8 px-3 py-3 text-left transition hover:border-cyan-500/40">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-white/45">
             <input
               type="checkbox"
               checked={tokenSaveMode}
               onChange={(e) => onTokenSaveModeChange(e.target.checked)}
-              className="mt-0.5 rounded border-white/20"
+              className="rounded border-white/20"
             />
-            <span>
-              <span className="text-sm font-medium text-cyan-100/90">
-                토큰절약 모드
-              </span>
-              <span className="mt-1 block text-[11px] leading-relaxed text-white/45">
-                발언을 1~3문장으로 짧게. 문장 중간에 끊기지 않게 끝까지 말하게
-                하고, 토큰 소모를 줄입니다.
-              </span>
-            </span>
+            토큰절약 (발언 1~3문장)
           </label>
 
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 p-3 text-xs leading-relaxed text-amber-100/80">
-            <p className="mb-1 font-medium text-amber-200/90">
-              토큰 예산 감 잡기
-            </p>
-            <p>{budgetGuide.summary}</p>
-            <p className="mt-2 text-white/45">
-              1턴 ≈ {budgetGuide.tokensPerTurn.toLocaleString()} 토큰 (발언 1개).
-              GE·MI·NI 한 바퀴(발언 3개)마다 합의안 ≈{" "}
-              {(budgetGuide.tokensPerTurn * 3).toLocaleString()} 토큰.
-              예: 30,000 토큰이면 발언 약 {estimateTokenBudget(30_000, layout, undefined, tokenSaveMode).estimatedTurns}개 ·
-              합의 약 {estimateTokenBudget(30_000, layout, undefined, tokenSaveMode).estimatedRounds}회.
-            </p>
-          </div>
-
-          <label className="flex items-center gap-2 text-xs text-white/45">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-white/45">
             <input
               type="checkbox"
               checked={rememberKey}
               onChange={(e) => onRememberKeyChange(e.target.checked)}
               className="rounded border-white/20"
             />
-            이 브라우저에 키 저장 (다음에 자동 입력)
+            이 브라우저에 키 저장
           </label>
 
-          <p className="text-xs leading-relaxed text-white/35">
-            24/7 백그라운드 토론을 위해 키는 서버에 암호화되어 해당 토론에만
-            저장됩니다. 예산 초과·API 한도 소진 시 토론이 자동 종료됩니다.
+          <p className="text-[10px] leading-relaxed text-white/25">
+            키는 암호화되어 해당 토론에만 사용됩니다.
           </p>
         </div>
+      )}
     </div>
   );
 }

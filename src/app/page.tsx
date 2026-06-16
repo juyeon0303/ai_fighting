@@ -1,46 +1,31 @@
 import { TopicForm } from "@/components/TopicForm";
 import { DebateList } from "@/components/DebateList";
-import { personaNamesLabel } from "@/lib/personas";
 
 export default function Home() {
   return (
     <main className="min-h-screen bg-[#0c0a14]">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-40 top-0 h-96 w-96 rounded-full bg-violet-600/15 blur-3xl" />
-        <div className="absolute -right-40 bottom-0 h-96 w-96 rounded-full bg-blue-600/10 blur-3xl" />
+        <div className="absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 rounded-full bg-violet-600/8 blur-3xl" />
       </div>
 
-      <div className="relative mx-auto max-w-3xl px-6 py-16">
-        <div className="mb-12 text-center">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/10 px-4 py-1.5 text-xs text-violet-300">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />
-            24/7 AI 토론 아레나
-          </div>
-          <h1 className="mb-4 text-4xl font-black tracking-tight md:text-5xl">
-            <span className="bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
-              AI 끝장토론
-            </span>
+      <div className="relative mx-auto max-w-lg px-5 py-10 sm:py-12">
+        <header className="mb-8">
+          <h1 className="text-2xl font-semibold tracking-tight text-white">
+            AI 끝장토론
           </h1>
-          <p className="mx-auto max-w-lg text-white/50">
-            천재 AI 3명이 Gemini·GPT API로 주제를 놓고 대화합니다.
+          <p className="mt-1.5 text-sm text-white/40">
+            GE · MI · NI가 주제를 놓고 대화합니다.
           </p>
-        </div>
+        </header>
 
         <TopicForm />
 
-        <div className="mt-16">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-white/40">
-              토론 기록
-            </h2>
-            <div className="flex gap-3 text-xs text-white/30">
-              <span>Gemini {personaNamesLabel("gemini")}</span>
-              <span>·</span>
-              <span>GPT {personaNamesLabel("openai")}</span>
-            </div>
-          </div>
+        <section className="mt-10">
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-white/30">
+            토론 기록
+          </h2>
           <DebateList />
-        </div>
+        </section>
       </div>
     </main>
   );

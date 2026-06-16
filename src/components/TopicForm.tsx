@@ -103,53 +103,49 @@ export function TopicForm() {
     }
   }
 
-  const modeHint =
-    layout === "gpt_vs_gemini"
-      ? "GPT vs Gemini 교차 토론 · 예산 내에서만 실행"
-      : layout === "gemini_only"
-        ? "Gemini 3명이 순수 API로 토론"
-        : "GPT 3명이 순수 API로 토론";
-
   return (
-    <form onSubmit={handleSubmit} className="w-full space-y-4">
-      <ApiKeySetupPanel
-        layout={layout}
-        onLayoutChange={setLayout}
-        openaiKey={openaiKey}
-        onOpenaiKeyChange={setOpenaiKey}
-        geminiKey={geminiKey}
-        onGeminiKeyChange={setGeminiKey}
-        openaiModel={openaiModel}
-        onOpenaiModelChange={setOpenaiModel}
-        geminiModel={geminiModel}
-        onGeminiModelChange={setGeminiModel}
-        maxTokenBudget={maxTokenBudget}
-        onMaxTokenBudgetChange={setMaxTokenBudget}
-        tokenSaveMode={tokenSaveMode}
-        onTokenSaveModeChange={setTokenSaveMode}
-        rememberKey={rememberKey}
-        onRememberKeyChange={setRememberKey}
-      />
-
-      <div className="relative">
-        <input
-          type="text"
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          placeholder="예: 동양 vs 서양 사고방식"
-          className="w-full rounded-2xl border border-white/10 bg-white/5 px-6 py-5 pr-36 text-lg text-white placeholder:text-white/30 outline-none transition focus:border-violet-500/50 focus:bg-white/8"
-          disabled={loading}
+    <form onSubmit={handleSubmit} className="w-full">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 sm:p-6">
+        <ApiKeySetupPanel
+          layout={layout}
+          onLayoutChange={setLayout}
+          openaiKey={openaiKey}
+          onOpenaiKeyChange={setOpenaiKey}
+          geminiKey={geminiKey}
+          onGeminiKeyChange={setGeminiKey}
+          openaiModel={openaiModel}
+          onOpenaiModelChange={setOpenaiModel}
+          geminiModel={geminiModel}
+          onGeminiModelChange={setGeminiModel}
+          maxTokenBudget={maxTokenBudget}
+          onMaxTokenBudgetChange={setMaxTokenBudget}
+          tokenSaveMode={tokenSaveMode}
+          onTokenSaveModeChange={setTokenSaveMode}
+          rememberKey={rememberKey}
+          onRememberKeyChange={setRememberKey}
         />
-        <button
-          type="submit"
-          disabled={!topic.trim() || loading}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {loading ? "생성 중..." : "토론 시작 →"}
-        </button>
-      </div>
 
-      <p className="text-center text-sm text-white/40">{modeHint}</p>
+        <div className="mt-5 border-t border-white/8 pt-5">
+          <label className="mb-2 block text-xs text-white/45">토론 주제</label>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              type="text"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="예: 동양 vs 서양 사고방식"
+              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white placeholder:text-white/25 outline-none transition focus:border-white/20"
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              disabled={!topic.trim() || loading}
+              className="shrink-0 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {loading ? "생성 중..." : "토론 시작"}
+            </button>
+          </div>
+        </div>
+      </div>
     </form>
   );
 }

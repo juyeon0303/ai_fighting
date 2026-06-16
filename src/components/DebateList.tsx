@@ -42,32 +42,32 @@ export function DebateList() {
 
   if (debates.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-white/10 py-16 text-center text-white/30">
-        아직 토론이 없습니다. 위에서 주제를 던져보세요.
+      <div className="rounded-xl border border-dashed border-white/8 py-10 text-center text-xs text-white/30">
+        아직 토론이 없습니다.
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {debates.map((debate) => (
         <div
           key={debate.id}
-          className="group flex items-center gap-2 rounded-2xl border border-white/8 bg-white/3 px-5 py-4 transition hover:border-violet-500/30 hover:bg-white/6"
+          className="group flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5 transition hover:border-white/15 hover:bg-white/[0.04]"
         >
           <Link
             href={`/debate/${debate.id}`}
             className="min-w-0 flex-1"
           >
-            <p className="truncate font-medium text-white group-hover:text-violet-200">
+            <p className="truncate text-sm text-white/90 group-hover:text-white">
               {debate.topic}
             </p>
-            <p className="mt-1 text-xs text-white/35">
+            <p className="mt-0.5 text-[11px] text-white/30">
               {new Date(debate.updatedAt).toLocaleString("ko-KR")}
             </p>
           </Link>
           <span
-            className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLOR[debate.status]}`}
+            className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-medium ${STATUS_COLOR[debate.status]}`}
           >
             {STATUS_LABEL[debate.status]}
           </span>
