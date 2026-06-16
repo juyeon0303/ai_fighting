@@ -147,6 +147,23 @@ body {
   }
 }
 
-.timeline-item {
-  animation: timeline-item-in 0.4s ease-out both;
+@keyframes debate-seat-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.15); }
+}
+
+.debate-seat-active {
+  animation: debate-seat-pulse 2s ease-in-out infinite;
+}
+
+.triangle-stage {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 55%, rgba(139, 92, 246, 0.08), transparent),
+    radial-gradient(circle at 16% 78%, rgba(139, 92, 246, 0.06), transparent 40%),
+    radial-gradient(circle at 84% 78%, rgba(6, 182, 212, 0.06), transparent 40%),
+    radial-gradient(circle at 50% 14%, rgba(245, 158, 11, 0.08), transparent 35%);
+}
+
+.debate-bubble {
+  backdrop-filter: blur(8px);
 }

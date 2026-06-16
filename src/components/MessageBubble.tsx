@@ -87,12 +87,35 @@ export function MessageBubble({ message, prevMessage, isNew }: MessageBubbleProp
 
 interface TypingIndicatorProps {
   personaId?: string;
+  compact?: boolean;
 }
 
-export function TypingIndicator({ personaId }: TypingIndicatorProps) {
-  const color = personaId
-    ? PERSONA_META[normalizePersonaId(personaId)].color
-    : "#8b5cf6";
+export function TypingIndicator({ personaId, compact }: TypingIndicatorProps) {
+  const pid = personaId ? normalizePersonaId(personaId) : "cipher";
+  const color = PERSONA_META[pid].color;
+  const name = personaId
+    ? getPersona(pid, "gemini").name
+    : null;
+
+  if (compact) {
+    return (
+      <div
+        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] text-white/50"
+        style={{ borderColor: `${color}33` }}
+      >
+        <div className="flex gap-0.5">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="h-1 w-1 animate-bounce rounded-full"
+              style={{ backgroundColor: color, animationDelay: `${i * 150}ms` }}
+            />
+          ))}
+        </div>
+        {name} 생각 중...
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2 text-sm text-white/30">

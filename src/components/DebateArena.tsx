@@ -11,28 +11,23 @@ import type {
 import { parseTopic, getModeLabel } from "@/lib/topic-context";
 import {
   DEBATE_TURN_ORDER,
-  PERSONA_META,
-  geniusLens,
-  personaDisplayName,
   normalizePersonaId,
 } from "@/lib/personas";
 import {
   layoutLabel,
-  personaProvider,
   providerLabel,
 } from "@/lib/debate-llm-config";
 import { ArenaEffects } from "./ArenaEffects";
+import { TriangleDebateStage } from "./TriangleDebateStage";
 import { DebateTimeline } from "./DebateTimeline";
 import { DebateReportPanel } from "./DebateReportPanel";
 import { DeleteDebateButton } from "./DeleteDebateButton";
-import { MessageBubble, TypingIndicator } from "./MessageBubble";
 
 interface DebateArenaProps {
   debateId: string;
 }
 
 export function DebateArena({ debateId }: DebateArenaProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
   const knownMessageIds = useRef(new Set<string>());
 
   const [messages, setMessages] = useState<DebateMessage[]>([]);
@@ -185,10 +180,6 @@ export function DebateArena({ debateId }: DebateArenaProps) {
     poll();
     return () => clearInterval(id);
   }, [debateId, messages.length, status]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   async function toggleStatus(newStatus: "active" | "paused" | "ended") {
     await fetch(`/api/debates/${debateId}/status`, {
@@ -353,59 +344,19 @@ export function DebateArena({ debateId }: DebateArenaProps) {
               />
             </div>
           </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {DEBATE_TURN_ORDER.map((id) => {
-              const meta = PERSONA_META[id];
-              const provider =
-                llmMode === "user_api" && apiLayout
-                  ? personaProvider(apiLayout, id)
-                  : "gemini";
-              const name = personaDisplayName(id, provider);
-              const isActive = lastPersonaId === id && status === "active";
-              const label = `${name} · ${geniusLens(id)}`;
-              const providerBadge =
-                llmMode === "user_api" && apiLayout
-                  ? providerLabel(provider)
-                  : null;
-              return (
-                <div
-                  key={id}
-                  className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition ${isActive ? "bg-white/10 ring-1 ring-white/20" : "opacity-40"}`}
-                  style={isActive ? { color: meta.color } : undefined}
-                >
-                  {meta.emoji} {label}
-                  {providerBadge && (
-                    <span className="rounded bg-white/10 px-1 text-[9px] text-white/50">
-                      {providerBadge}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         </header>
 
-        <div className="relative z-10 flex-1 overflow-y-auto px-6 py-6">
-          <div className="mx-auto max-w-2xl space-y-6">
-            {messages.length === 0 && (
-              <div className="py-20 text-center text-white/30">
-                천재 3명이 대화를 준비하고 있습니다...
-              </div>
-            )}
-            {messages.map((msg, i) => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                prevMessage={messages[i - 1]}
-                isNew={newMessageIds.has(msg.id)}
-              />
-            ))}
-            {status === "active" && messages.length > 0 && (
-              <TypingIndicator personaId={nextPersona} />
-            )}
-            <div ref={bottomRef} />
-          </div>
+        <div className="relative z-10 flex-1 overflow-hidden">
+          <TriangleDebateStage
+            messages={messages}
+            newMessageIds={newMessageIds}
+            nextPersona={nextPersona}
+            lastPersonaId={lastPersonaId}
+            status={status}
+            topic={topic}
+            llmMode={llmMode}
+            apiLayout={apiLayout}
+          />
         </div>
       </div>
 

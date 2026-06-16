@@ -22,7 +22,7 @@ export function ArenaEffects({
       <div
         className="absolute inset-0 transition-opacity duration-700"
         style={{
-          background: `radial-gradient(ellipse at 50% 0%, ${color}18 0%, transparent 60%)`,
+          background: `radial-gradient(ellipse at 50% 55%, ${color}14 0%, transparent 55%)`,
         }}
       />
       {flashKey > 0 && (
