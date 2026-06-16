@@ -2,6 +2,7 @@ import type { ApiLayout, Debate, PersonaId } from "./types";
 import { decryptApiKey } from "./api-key-crypto";
 import { DEFAULT_GEMINI_MODEL, normalizeGeminiModel } from "./gemini-models";
 import { DEFAULT_OPENAI_MODEL, normalizeOpenaiModel } from "./openai-models";
+import { estimateTokenBudget } from "./token-budget-guide";
 
 export type ApiConnectionIssue =
   | "key_decrypt_failed"
@@ -170,9 +171,50 @@ export function resolveDebateAnalysisOptions(debate: Debate): {
   return null;
 }
 
+/** 다음 발언 1회 + 여유분 — 이보다 적으면 토큰 부족으로 처리 */
+export const MIN_TURN_TOKEN_RESERVE = 500;
+
+export function getRemainingTokenBudget(debate: {
+  maxTokenBudget: number;
+  tokensUsed: number;
+}): number {
+  if (debate.maxTokenBudget <= 0) return Number.POSITIVE_INFINITY;
+  return Math.max(0, debate.maxTokenBudget - debate.tokensUsed);
+}
+
+export function minTokenReserveForDebate(debate: Debate): number {
+  const layout = resolveApiLayout(debate) ?? "gemini_only";
+  const perTurn = estimateTokenBudget(
+    10_000,
+    layout,
+    undefined,
+    debate.tokenSaveMode ?? false,
+  ).tokensPerTurn;
+  return perTurn + 200;
+}
+
+export function isTokenBudgetLow(
+  tokensUsed: number,
+  maxTokenBudget: number,
+  reserve = MIN_TURN_TOKEN_RESERVE,
+): boolean {
+  if (maxTokenBudget <= 0) return false;
+  if (tokensUsed >= maxTokenBudget) return true;
+  return maxTokenBudget - tokensUsed < reserve;
+}
+
 export function isTokenBudgetExceeded(debate: Debate): boolean {
   if (debate.maxTokenBudget <= 0) return false;
   return debate.tokensUsed >= debate.maxTokenBudget;
+}
+
+export function isTokenBudgetInsufficient(debate: Debate): boolean {
+  if (debate.maxTokenBudget <= 0) return false;
+  return isTokenBudgetLow(
+    debate.tokensUsed,
+    debate.maxTokenBudget,
+    minTokenReserveForDebate(debate),
+  );
 }
 
 export function sanitizeDebateForClient(debate: Debate): Debate & {
@@ -200,6 +242,10 @@ export function validateUserApiInput(input: UserApiInput): string | null {
   if (layout === "gpt_vs_gemini") {
     if (!input.openaiKey?.trim()) return "GPT vs Gemini 모드에는 OpenAI 키가 필요합니다.";
     if (!input.geminiKey?.trim()) return "GPT vs Gemini 모드에는 Gemini 키가 필요합니다.";
+  }
+  const budget = input.maxTokenBudget ?? 0;
+  if (budget > 0 && budget < MIN_TURN_TOKEN_RESERVE) {
+    return "토큰이 부족합니다.";
   }
   return null;
 }

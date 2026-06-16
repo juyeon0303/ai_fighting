@@ -16,6 +16,8 @@ import {
 import {
   layoutLabel,
   providerLabel,
+  isTokenBudgetLow,
+  MIN_TURN_TOKEN_RESERVE,
 } from "@/lib/debate-llm-config";
 import { ArenaEffects } from "./ArenaEffects";
 import { RoundTablePanel } from "./RoundTablePanel";
@@ -31,6 +33,7 @@ interface DebateArenaProps {
 export function DebateArena({ debateId }: DebateArenaProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const knownMessageIds = useRef(new Set<string>());
+  const tokenAlertShown = useRef(false);
 
   const [messages, setMessages] = useState<DebateMessage[]>([]);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
@@ -151,8 +154,17 @@ export function DebateArena({ debateId }: DebateArenaProps) {
       }
     });
 
-    es.addEventListener("ended", () => {
+    es.addEventListener("ended", (e) => {
+      const data = JSON.parse(e.data) as { endReason?: string | null };
       setStatus("ended");
+      if (data.endReason) setEndReason(data.endReason);
+      if (
+        data.endReason === "token_budget" &&
+        !tokenAlertShown.current
+      ) {
+        tokenAlertShown.current = true;
+        alert("토큰이 부족합니다");
+      }
     });
 
     es.onerror = () => setConnected(false);
@@ -189,6 +201,20 @@ export function DebateArena({ debateId }: DebateArenaProps) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (llmMode !== "user_api" || maxTokenBudget <= 0) return;
+
+    const reserve = Math.max(MIN_TURN_TOKEN_RESERVE, 580);
+    const low =
+      endReason === "token_budget" ||
+      isTokenBudgetLow(tokensUsed, maxTokenBudget, reserve);
+
+    if (!low || tokenAlertShown.current) return;
+
+    tokenAlertShown.current = true;
+    alert("토큰이 부족합니다");
+  }, [llmMode, maxTokenBudget, tokensUsed, endReason, status]);
 
   async function toggleStatus(newStatus: "active" | "paused" | "ended") {
     await fetch(`/api/debates/${debateId}/status`, {

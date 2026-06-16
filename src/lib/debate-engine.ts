@@ -17,6 +17,8 @@ import {
 } from "./db";
 import {
   isTokenBudgetExceeded,
+  isTokenBudgetInsufficient,
+  minTokenReserveForDebate,
   resolveDebateAnalysisOptions,
   resolvePersonaLlmRuntime,
 } from "./debate-llm-config";
@@ -116,7 +118,11 @@ async function endDebate(debateId: string, endReason?: string): Promise<void> {
     await setDebateEndReason(debateId, endReason);
   }
   await updateDebateStatus(debateId, "ended");
-  debateEvents.emit("debate-ended", { debateId });
+  const debate = await getDebate(debateId);
+  if (debate) {
+    debateEvents.emit("debate-update", { debateId, debate });
+  }
+  debateEvents.emit("debate-ended", { debateId, endReason: endReason ?? null });
   await finalizeDebate(debateId);
 }
 
@@ -127,7 +133,7 @@ async function processDebateTurnInner(
     const debate = await getDebate(debateId);
     if (!debate || debate.status !== "active") return null;
 
-    if (isTokenBudgetExceeded(debate)) {
+    if (isTokenBudgetInsufficient(debate)) {
       await endDebate(debateId, "token_budget");
       return null;
     }
@@ -171,6 +177,17 @@ async function processDebateTurnInner(
       console.warn(
         `[debate ${debateId}] empty/incomplete turn (${personaId}) — retry later (${streak}/5)`,
       );
+      const remaining = debate.maxTokenBudget - debate.tokensUsed;
+      const reserve = minTokenReserveForDebate(debate);
+      if (
+        streak >= 2 &&
+        debate.maxTokenBudget > 0 &&
+        remaining < reserve * 2
+      ) {
+        emptyTurnStreak.delete(debateId);
+        await endDebate(debateId, "token_budget");
+        return null;
+      }
       if (streak >= 5) {
         emptyTurnStreak.delete(debateId);
         await endDebate(debateId, "empty_turn");

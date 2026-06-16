@@ -72,9 +72,9 @@ export async function GET(
         }
       };
 
-      const onEnded = (payload: { debateId: string }) => {
+      const onEnded = (payload: { debateId: string; endReason?: string | null }) => {
         if (payload.debateId === id) {
-          send("ended", { debateId: id });
+          send("ended", { debateId: id, endReason: payload.endReason ?? null });
         }
       };
 

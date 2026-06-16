@@ -52,7 +52,11 @@ export function TopicForm() {
       tokenSaveMode,
     });
     if (err) {
-      alert(err);
+      if (err.includes("토큰")) {
+        alert("토큰이 부족합니다");
+      } else {
+        alert(err);
+      }
       return;
     }
 
@@ -89,7 +93,11 @@ export function TopicForm() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "생성 실패");
+        const msg = (data as { error?: string }).error ?? "생성 실패";
+        if (msg.includes("토큰")) {
+          alert("토큰이 부족합니다");
+        }
+        throw new Error(msg);
       }
 
       const debate = await res.json();

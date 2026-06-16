@@ -30,26 +30,22 @@ export function maxOutputTokens(
 const SENTENCE_SPLIT =
   /(?<=[.!?…]|다|임|함|요|지|야|어|냐|네|거야|같아|거든|잖아|래|줘)\s+/;
 
-/** 문장이 중간에 끊긴 경우 */
+const COMPLETE_ENDING =
+  /(?:[.!?…]|(?:다|임|함|요|봄|해|네|지|야|어|냐|데|잖아|거야|같아|거든|래|줘|세|죠|군|음|란|까|나|라|게|봐|해요|에요|죠|습니다|입니다|거예요|예요|할게|할래|맞아|그래))\s*$/;
+
+/** 문장이 중간에 끊긴 경우 — 완결 어미 없으면 불완전 처리 */
 export function isIncompleteTurn(content: string): boolean {
   const t = content.trim();
   if (t.length < 12) return true;
+  if (COMPLETE_ENDING.test(t)) return false;
   if (
-    /[.!?…]\s*$/.test(t) ||
-    /(?:다|임|함|요|봄|해|네|지|야|어|냐|데|잖아|거야|같아|거든|래|셈이야|거지|네|줘)\s*$/.test(
-      t,
-    )
-  ) {
-    return false;
-  }
-  if (
-    /(?:마다|에서|하여|이고|으며|라서|도록|처럼|듯|같고|있고|없고|보면|때문|충돌하며|경우|것은|것이|있는|없는|되는|하는|이라|라는|으로|로서|위해|통해)$/.test(
+    /(?:마다|에서|하여|이고|으며|라서|도록|처럼|듯|같고|있고|없고|보면|때문|충돌하며|경우|것은|것이|있는|없는|되는|하는|이라|라는|으로|로서|위해|통해|대해|관해|따라|까지|부터|마저|조차|밖에|뿐|만큼|정도|쯤|짓|되|하|싶|같|줄|올|볼|릴|할|될|인|적|티|법|척|듯이|하며|이며|라며|다며|면서|면|고|서|니|게|듯|듯한|같은|없|있)$/.test(
       t,
     )
   ) {
     return true;
   }
-  return false;
+  return true;
 }
 
 function clampAtSentenceBoundary(text: string, maxChars: number): string {
