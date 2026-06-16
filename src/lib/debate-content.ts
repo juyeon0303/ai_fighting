@@ -3,6 +3,8 @@ import type { TopicContext } from "./topic-context";
 import { parseTopic, topicChatLine, topicUsesSearch } from "./topic-context";
 import type { TopicDomain } from "./topic-context";
 import {
+  GOD_DISPLAY_NAME,
+  isGodSpeaker,
   personaDisplayName,
   personaNamesLabel,
   normalizePersonaId,
@@ -117,7 +119,7 @@ export function contradictsOwnRecentSpeech(
   if (!t || PIVOT_PHRASE.test(t)) return false;
 
   const own = history.filter(
-    (m) => normalizePersonaId(m.personaId) === personaId,
+    (m) => !isGodSpeaker(m.personaId) && normalizePersonaId(m.personaId) === personaId,
   );
   if (own.length === 0) return false;
 
@@ -147,7 +149,7 @@ export function isSelfAnswerTurn(
   newText: string,
 ): boolean {
   const last = history[history.length - 1];
-  if (!last || normalizePersonaId(last.personaId) !== personaId) return false;
+  if (!last || isGodSpeaker(last.personaId) || normalizePersonaId(last.personaId) !== personaId) return false;
 
   const t = newText.trim();
   if (!t || PIVOT_PHRASE.test(t)) return false;
@@ -238,6 +240,7 @@ export function personaSystemInstruction(
     "직전 말에 자연스럽게 이어져. 매번 '반박합니다' 같은 토론 말투는 금지.",
     "자기 말에 '그치' '맞아' '그래서'로 받는 자문자답 금지. 반응은 남 말에만.",
     "주제에서 완전히 벗어나 톡방·팝콘·잡수다만 하지 마. 가끔 빗대는 건 되는데 핵심 주제는 유지.",
+    "신(사용자)이 끼어들면 태클·방향 조정으로 받아. 무시하거나 농담으로 넘기지 마.",
     "네가 이미 말한 입장과 반대 주장 금지. 입장 바꿀 때만 '아까는 그랬는데'처럼 이유부터.",
     "네 예전 말을 남 말처럼 만들거나 자기 말을 까지 마.",
     "꾸며낸 연구·대학 실험·통계 인용 금지. 확실치 않으면 단정 짧게.",
@@ -247,7 +250,7 @@ export function personaSystemInstruction(
 }
 
 function openingUserMessage(ctx: TopicContext, provider: ApiProvider): string {
-  return `${topicChatLine(ctx)}\n${personaNamesLabel(provider)} 셋이 막 수다해. 순서 없음. 토론장 말투 말고 친구 단톡처럼.`;
+  return `${topicChatLine(ctx)}\n${personaNamesLabel(provider)} 셋이 막 수다해. 순서 없음. 토론장 말투 말고 친구 단톡처럼.\n신(사용자)이 중간에 끼어들 수 있음 — 그때 지시·태클 우선.`;
 }
 
 function historyTurn(
@@ -255,6 +258,9 @@ function historyTurn(
   currentPersonaId: PersonaId,
   provider: ApiProvider,
 ): { role: "user" | "model"; text: string } {
+  if (isGodSpeaker(msg.personaId)) {
+    return { role: "user", text: `[${GOD_DISPLAY_NAME}]: ${msg.content}` };
+  }
   const speakerId = normalizePersonaId(msg.personaId);
   const speaker = personaDisplayName(
     speakerId,
@@ -279,18 +285,27 @@ function currentTurnUserPrompt(
   const short = tokenSaveMode ? " 더 짧게." : "";
 
   const ownRecent = history
-    .filter((m) => normalizePersonaId(m.personaId) === personaId)
+    .filter(
+      (m) =>
+        !isGodSpeaker(m.personaId) &&
+        normalizePersonaId(m.personaId) === personaId,
+    )
     .slice(-2);
 
   const last = history[history.length - 1];
-  const lastId = last ? normalizePersonaId(last.personaId) : personaId;
+  const lastIsGod = last ? isGodSpeaker(last.personaId) : false;
+  const lastId = last && !lastIsGod ? normalizePersonaId(last.personaId) : personaId;
   const lastName = last
-    ? personaDisplayName(lastId, providerFromMessageSource(last.llmSource))
+    ? lastIsGod
+      ? GOD_DISPLAY_NAME
+      : personaDisplayName(lastId, providerFromMessageSource(last.llmSource))
     : name;
 
   let nudge: string;
   if (history.length === 0) {
     nudge = `${name}, 분위기 보고 한마디.${short}`;
+  } else if (lastIsGod) {
+    nudge = `[${GOD_DISPLAY_NAME}] 태클·지시 듣고 반응해. 반말로, 무시하지 마.${short}`;
   } else if (lastId === personaId) {
     nudge = `방금 네가 말했으니 자문자답 금지. 남 반응 기다리거나 새 각도만.${short}`;
   } else {

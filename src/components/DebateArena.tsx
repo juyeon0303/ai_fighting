@@ -8,6 +8,7 @@ import type {
   TimelineEvent,
 } from "@/lib/types";
 import { parseTopic, getModeLabel } from "@/lib/topic-context";
+import { lastPersonaId as resolveLastPersonaId } from "@/lib/personas";
 import {
   layoutLabel,
   providerLabel,
@@ -53,10 +54,10 @@ export function DebateArena({ debateId }: DebateArenaProps) {
   );
   const [showReport, setShowReport] = useState(false);
   const [newMessageIds, setNewMessageIds] = useState<Set<string>>(new Set());
+  const [godInput, setGodInput] = useState("");
+  const [godSending, setGodSending] = useState(false);
 
-  const lastPersonaId = messages.length
-    ? messages[messages.length - 1].personaId
-    : null;
+  const lastPersonaId = resolveLastPersonaId(messages);
 
   useEffect(() => {
     const es = new EventSource(`/api/debates/${debateId}/stream`);
@@ -240,6 +241,29 @@ export function DebateArena({ debateId }: DebateArenaProps) {
     });
     setStatus(newStatus);
     if (newStatus === "ended") setShowReport(true);
+  }
+
+  async function sendGodIntervention() {
+    const text = godInput.trim();
+    if (!text || godSending || status !== "active") return;
+    setGodSending(true);
+    try {
+      const res = await fetch(`/api/debates/${debateId}/intervene`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text }),
+      });
+      if (res.ok) {
+        setGodInput("");
+      } else {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        alert(data.error ?? "전달하지 못했습니다.");
+      }
+    } catch {
+      alert("전달하지 못했습니다.");
+    } finally {
+      setGodSending(false);
+    }
   }
 
   const topicCtx = topic ? parseTopic(topic) : null;
@@ -451,7 +475,7 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                 발언이 없습니다
               </div>
             )}
-            <div className="mx-auto max-w-2xl space-y-0">
+            <div className="mx-auto max-w-2xl space-y-3">
               {messages.map((msg, i) => (
                 <MessageBubble
                   key={msg.id}
@@ -466,6 +490,41 @@ export function DebateArena({ debateId }: DebateArenaProps) {
               <div ref={bottomRef} />
             </div>
           </div>
+          {status === "active" && (
+            <div className="shrink-0 border-t border-amber-300/15 bg-amber-400/[0.04] px-5 py-3">
+              <div className="mx-auto max-w-2xl">
+                <div className="mb-2 flex items-center gap-2 text-xs text-amber-200/80">
+                  <span className="font-semibold text-amber-100">신</span>
+                  <span className="text-white/35">· 토론 중 태클·방향 조정</span>
+                </div>
+                <div className="flex gap-2">
+                  <textarea
+                    value={godInput}
+                    onChange={(e) => setGodInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void sendGodIntervention();
+                      }
+                    }}
+                    placeholder='예: "주제 벗어났어, 페이커·쵸비로 다시" / "강 너무 억지야"'
+                    rows={2}
+                    maxLength={400}
+                    disabled={godSending}
+                    className="min-h-[52px] flex-1 resize-none rounded-lg border border-amber-300/20 bg-black/30 px-3 py-2 text-[13px] text-white/90 placeholder:text-white/30 focus:border-amber-300/40 focus:outline-none disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void sendGodIntervention()}
+                    disabled={godSending || !godInput.trim()}
+                    className="shrink-0 self-end rounded-lg border border-amber-300/30 bg-amber-400/15 px-4 py-2 text-xs font-medium text-amber-100 transition hover:bg-amber-400/25 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {godSending ? "전달 중…" : "전달"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         <DebateTimeline events={timeline} highlightId={highlightTimelineId} />

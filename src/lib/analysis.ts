@@ -1,12 +1,13 @@
 import OpenAI from "openai";
 import type { ApiProvider, DebateMessage, DebateReport, TimelineEvent } from "./types";
-import { DEBATE_TURN_ORDER, normalizePersonaId, personaDisplayName, providerFromMessageSource, TURNS_PER_ROUND } from "./personas";
+import { DEBATE_TURN_ORDER, GOD_DISPLAY_NAME, isGodSpeaker, normalizePersonaId, personaDisplayName, providerFromMessageSource, TURNS_PER_ROUND } from "./personas";
 import { parseTopic } from "./topic-context";
 import { DEFAULT_OPENAI_MODEL } from "./openai-models";
 import { DEFAULT_GEMINI_MODEL } from "./gemini-models";
 import { requestGeminiTurn } from "./gemini";
 
 function speakerLabel(m: DebateMessage): string {
+  if (isGodSpeaker(m.personaId)) return GOD_DISPLAY_NAME;
   return personaDisplayName(
     normalizePersonaId(m.personaId),
     providerFromMessageSource(m.llmSource),
@@ -15,7 +16,9 @@ function speakerLabel(m: DebateMessage): string {
 
 function namesSummary(messages: DebateMessage[]): string {
   return DEBATE_TURN_ORDER.map((id) => {
-    const msg = messages.find((m) => normalizePersonaId(m.personaId) === id);
+    const msg = messages.find(
+      (m) => !isGodSpeaker(m.personaId) && normalizePersonaId(m.personaId) === id,
+    );
     const provider: ApiProvider = msg
       ? providerFromMessageSource(msg.llmSource)
       : "gemini";
@@ -416,19 +419,25 @@ export async function generateFinalReport(
   const atlasName = personaDisplayName(
     "atlas",
     providerFromMessageSource(
-      messages.find((m) => normalizePersonaId(m.personaId) === "atlas")?.llmSource,
+      messages.find(
+        (m) => !isGodSpeaker(m.personaId) && normalizePersonaId(m.personaId) === "atlas",
+      )?.llmSource,
     ),
   );
   const cipherName = personaDisplayName(
     "cipher",
     providerFromMessageSource(
-      messages.find((m) => normalizePersonaId(m.personaId) === "cipher")?.llmSource,
+      messages.find(
+        (m) => !isGodSpeaker(m.personaId) && normalizePersonaId(m.personaId) === "cipher",
+      )?.llmSource,
     ),
   );
   const emberName = personaDisplayName(
     "ember",
     providerFromMessageSource(
-      messages.find((m) => normalizePersonaId(m.personaId) === "ember")?.llmSource,
+      messages.find(
+        (m) => !isGodSpeaker(m.personaId) && normalizePersonaId(m.personaId) === "ember",
+      )?.llmSource,
     ),
   );
 

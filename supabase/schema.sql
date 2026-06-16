@@ -31,7 +31,7 @@ create table if not exists debates (
 create table if not exists debate_messages (
   id uuid primary key default gen_random_uuid(),
   debate_id uuid not null references debates(id) on delete cascade,
-  persona_id text not null check (persona_id in ('atlas', 'cipher', 'ember', 'pro', 'con', 'neutral', 'moderator')),
+  persona_id text not null check (persona_id in ('atlas', 'cipher', 'ember', 'pro', 'con', 'neutral', 'moderator', 'god')),
   content text not null,
   round int not null,
   llm_source text check (llm_source is null or llm_source in ('openai', 'gemini', 'engine')),

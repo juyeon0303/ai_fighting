@@ -6,6 +6,9 @@ export type ApiLayout = "openai_only" | "gemini_only" | "gpt_vs_gemini";
 
 export type PersonaId = "atlas" | "cipher" | "ember";
 
+/** 토론 메시지 화자 — AI 셋 + 중재하는 사용자(신) */
+export type MessageSpeakerId = PersonaId | "god";
+
 export type MessageLlmSource = "openai" | "gemini" | "engine";
 
 export type TimelineEventType = "consensus" | "turning_point" | "conflict";
@@ -21,7 +24,7 @@ export interface Persona {
 export interface DebateMessage {
   id: string;
   debateId: string;
-  personaId: PersonaId;
+  personaId: MessageSpeakerId;
   content: string;
   round: number;
   createdAt: string;

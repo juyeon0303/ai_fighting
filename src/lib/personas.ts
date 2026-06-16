@@ -1,4 +1,4 @@
-import type { ApiLayout, ApiProvider, DebateMessage, Persona, PersonaId } from "./types";
+import type { ApiLayout, ApiProvider, DebateMessage, MessageSpeakerId, Persona, PersonaId } from "./types";
 import { personaProvider } from "./debate-llm-config";
 
 export const DEBATE_TURN_ORDER: PersonaId[] = ["atlas", "cipher", "ember"];
@@ -64,6 +64,34 @@ export function personaNamesLabelForLayout(layout: ApiLayout): string {
   ).join("·");
 }
 
+export const GOD_SPEAKER_ID = "god" as const satisfies MessageSpeakerId;
+export const GOD_DISPLAY_NAME = "신";
+
+export function isGodSpeaker(id: string): id is typeof GOD_SPEAKER_ID {
+  return id === GOD_SPEAKER_ID;
+}
+
+export function messageSpeakerLabel(
+  msg: DebateMessage,
+  provider: ApiProvider = "gemini",
+): string {
+  if (isGodSpeaker(msg.personaId)) return GOD_DISPLAY_NAME;
+  return personaDisplayName(normalizePersonaId(msg.personaId), provider);
+}
+
+export function lastPersonaMessage(messages: DebateMessage[]): DebateMessage | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]!;
+    if (!isGodSpeaker(msg.personaId)) return msg;
+  }
+  return null;
+}
+
+export function lastPersonaId(messages: DebateMessage[]): PersonaId | null {
+  const msg = lastPersonaMessage(messages);
+  return msg ? normalizePersonaId(msg.personaId) : null;
+}
+
 export function providerFromMessageSource(
   llmSource?: string | null,
 ): ApiProvider {
@@ -102,7 +130,9 @@ function messagesSinceSpeaker(
   personaId: PersonaId,
 ): number {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (normalizePersonaId(messages[i]!.personaId) === personaId) {
+    const msg = messages[i]!;
+    if (isGodSpeaker(msg.personaId)) continue;
+    if (normalizePersonaId(msg.personaId) === personaId) {
       return messages.length - 1 - i;
     }
   }
@@ -122,7 +152,8 @@ export function pickNextSpeaker(
   }
 
   const lastMsg = messages[messages.length - 1]!;
-  const lastId = normalizePersonaId(lastMsg.personaId);
+  const lastFromGod = isGodSpeaker(lastMsg.personaId);
+  const lastId = lastFromGod ? null : normalizePersonaId(lastMsg.personaId);
   const lastText = lastMsg.content;
 
   const scores: Record<PersonaId, number> = {
@@ -132,9 +163,16 @@ export function pickNextSpeaker(
   };
 
   for (const id of DEBATE_TURN_ORDER) {
-    if (id !== lastId) scores[id] += 1.15;
+    if (lastId && id === lastId) scores[id] = 0;
+    else scores[id] += 1.15;
   }
-  scores[lastId] = 0;
+
+  if (lastFromGod) {
+    for (const id of DEBATE_TURN_ORDER) {
+      scores[id] += 2.2;
+      if (lastText.includes(GEMINI_NAMES[id])) scores[id] += 2;
+    }
+  }
 
   for (const id of DEBATE_TURN_ORDER) {
     if (lastText.includes(GEMINI_NAMES[id])) scores[id] += 1.6;
@@ -142,17 +180,22 @@ export function pickNextSpeaker(
 
   if (/그건|아닌데|근데|솔직히|틀렸|반박|억지|맞긴|인정/.test(lastText)) {
     for (const id of DEBATE_TURN_ORDER) {
-      if (id !== lastId) scores[id] += 0.55;
+      if (lastId && id !== lastId) scores[id] += 0.55;
+      else if (lastFromGod) scores[id] += 0.55;
     }
   }
 
   if (/[?？]|(?:니|냐|까)\s*$/.test(lastText.trim())) {
     for (const id of DEBATE_TURN_ORDER) {
-      if (id !== lastId) scores[id] += 0.45;
+      if (lastId && id !== lastId) scores[id] += 0.45;
+      else if (lastFromGod) scores[id] += 0.45;
     }
   }
 
-  const recent = messages.slice(-5).map((m) => normalizePersonaId(m.personaId));
+  const recent = messages
+    .slice(-5)
+    .filter((m) => !isGodSpeaker(m.personaId))
+    .map((m) => normalizePersonaId(m.personaId));
   for (const id of DEBATE_TURN_ORDER) {
     const streak = recent.filter((r) => r === id).length;
     if (streak >= 3) scores[id] *= 0.08;
@@ -174,7 +217,9 @@ export function pickNextSpeaker(
     roll -= scores[id];
     if (roll <= 0) return id;
   }
-  return DEBATE_TURN_ORDER.find((id) => id !== lastId) ?? lastId;
+  return lastId
+    ? DEBATE_TURN_ORDER.find((id) => id !== lastId) ?? lastId
+    : DEBATE_TURN_ORDER[0] ?? "atlas";
 }
 
 /** pickNextSpeaker 결과에 연속 발언이 섞이면 다른 화자로 교체 */
@@ -183,7 +228,9 @@ export function enforceNextSpeaker(
   picked: PersonaId,
 ): PersonaId {
   if (messages.length === 0) return picked;
-  const lastId = normalizePersonaId(messages[messages.length - 1]!.personaId);
+  const last = messages[messages.length - 1]!;
+  if (isGodSpeaker(last.personaId)) return picked;
+  const lastId = normalizePersonaId(last.personaId);
   if (picked !== lastId) return picked;
   return DEBATE_TURN_ORDER.find((id) => id !== lastId) ?? picked;
 }

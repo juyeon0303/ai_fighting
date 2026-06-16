@@ -30,6 +30,8 @@ import {
 import {
   effectiveTurnIntervalMs,
   enforceNextSpeaker,
+  GOD_SPEAKER_ID,
+  isGodSpeaker,
   normalizePersonaId,
   pickNextSpeaker,
   TURNS_PER_ROUND,
@@ -236,14 +238,15 @@ async function processDebateTurnInner(
     }
 
     if (latest.length > 0) {
-      const lastSpeaker = normalizePersonaId(
-        latest[latest.length - 1]!.personaId,
-      );
-      if (lastSpeaker === personaId) {
-        console.warn(
-          `[debate ${debateId}] blocked back-to-back speaker (${personaId})`,
-        );
-        return null;
+      const last = latest[latest.length - 1]!;
+      if (!isGodSpeaker(last.personaId)) {
+        const lastSpeaker = normalizePersonaId(last.personaId);
+        if (lastSpeaker === personaId) {
+          console.warn(
+            `[debate ${debateId}] blocked back-to-back speaker (${personaId})`,
+          );
+          return null;
+        }
       }
     }
 
@@ -390,4 +393,40 @@ export async function manualEndDebate(debateId: string): Promise<void> {
   const debate = await getDebate(debateId);
   if (!debate || debate.status === "ended") return;
   await endDebate(debateId);
+}
+
+const MAX_GOD_INTERVENTION_CHARS = 400;
+
+/** 사용자(신)가 토론 중 개입 — 메시지 저장 후 AI 턴 유도 */
+export async function submitGodIntervention(
+  debateId: string,
+  content: string,
+): Promise<DebateMessage | null> {
+  const trimmed = content.replace(/\s+/g, " ").trim();
+  if (!trimmed || trimmed.length > MAX_GOD_INTERVENTION_CHARS) return null;
+
+  const debate = await getDebate(debateId);
+  if (!debate || debate.status !== "active") return null;
+
+  startDebateWorker();
+
+  const messages = await getDebateMessages(debateId);
+  const round = Math.floor(messages.length / TURNS_PER_ROUND) + 1;
+  const message = await addMessage(
+    debateId,
+    GOD_SPEAKER_ID,
+    trimmed,
+    round,
+    null,
+  );
+
+  debateEvents.emit("message", { debateId, message });
+
+  const freshDebate = await getDebate(debateId);
+  if (freshDebate) {
+    debateEvents.emit("debate-update", { debateId, debate: freshDebate });
+  }
+
+  processDebateTurn(debateId).catch(console.error);
+  return message;
 }

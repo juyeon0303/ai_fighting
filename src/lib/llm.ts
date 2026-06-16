@@ -22,6 +22,7 @@ import {
   isTurnComplete,
   maxOutputTokens,
 } from "./debate-turn-budget";
+import { isGodSpeaker } from "./personas";
 
 export type LlmStopReason =
   | "auth"
@@ -281,11 +282,14 @@ export async function generateDebateTurn(
     }
 
     if (content && driftsOffTopic(topic, history, content)) {
-      lastWasDrift = true;
-      lastWasContradiction = false;
-      lastWasSelfAnswer = false;
-      lastWasIncomplete = false;
-      content = "";
+      const last = history[history.length - 1];
+      if (!(last && isGodSpeaker(last.personaId))) {
+        lastWasDrift = true;
+        lastWasContradiction = false;
+        lastWasSelfAnswer = false;
+        lastWasIncomplete = false;
+        content = "";
+      }
     }
 
     if (content) {

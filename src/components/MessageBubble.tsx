@@ -1,7 +1,13 @@
 "use client";
 
 import type { DebateMessage } from "@/lib/types";
-import { getPersona, normalizePersonaId, providerFromMessageSource } from "@/lib/personas";
+import {
+  GOD_DISPLAY_NAME,
+  getPersona,
+  isGodSpeaker,
+  normalizePersonaId,
+  providerFromMessageSource,
+} from "@/lib/personas";
 
 const SPARK_KEYWORDS = ["반박", "틀렸", "아닌데", "그건", "근데", "다르게"];
 
@@ -22,14 +28,39 @@ export function MessageBubble({
   prevMessage,
   isNew,
 }: MessageBubbleProps) {
-  const pid = normalizePersonaId(message.personaId);
-  const provider = providerFromMessageSource(message.llmSource);
-  const persona = getPersona(pid, provider);
-  const spark = isSparkMessage(message, prevMessage);
   const time = new Date(message.createdAt).toLocaleTimeString("ko-KR", {
     hour: "2-digit",
     minute: "2-digit",
   });
+
+  if (isGodSpeaker(message.personaId)) {
+    return (
+      <article
+        className={`rounded-xl border border-amber-300/25 bg-amber-400/[0.07] px-4 py-3 ${isNew ? "msg-enter" : ""}`}
+      >
+        <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-300/15 text-sm">
+            ✦
+          </span>
+          <span className="text-sm font-semibold text-amber-100">
+            {GOD_DISPLAY_NAME}
+          </span>
+          <span className="text-[11px] text-white/22">{time}</span>
+          <span className="rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] text-amber-200/90">
+            개입
+          </span>
+        </div>
+        <p className="whitespace-pre-wrap text-[13px] leading-[1.65] text-amber-50/90">
+          {message.content}
+        </p>
+      </article>
+    );
+  }
+
+  const pid = normalizePersonaId(message.personaId);
+  const provider = providerFromMessageSource(message.llmSource);
+  const persona = getPersona(pid, provider);
+  const spark = isSparkMessage(message, prevMessage);
 
   return (
     <article
