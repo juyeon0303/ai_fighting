@@ -44,8 +44,49 @@ const emptyTurnStreak = new Map<string, number>();
 const rateLimitStreak = new Map<string, number>();
 const rateLimitBackoffUntil = new Map<string, number>();
 const finalizing = new Set<string>();
+const scheduledTurnTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let workerStarted = false;
 let workerTimer: ReturnType<typeof setInterval> | null = null;
+
+function scheduleNextTurn(debateId: string, delayMs: number): void {
+  const prev = scheduledTurnTimers.get(debateId);
+  if (prev) clearTimeout(prev);
+
+  const timer = setTimeout(() => {
+    scheduledTurnTimers.delete(debateId);
+    getDebate(debateId)
+      .then((d) => {
+        if (d?.status === "active") {
+          processDebateTurn(debateId).catch(console.error);
+        }
+      })
+      .catch(console.error);
+  }, Math.max(300, delayMs));
+
+  scheduledTurnTimers.set(debateId, timer);
+}
+
+async function planNextTurn(debateId: string): Promise<void> {
+  const debate = await getDebate(debateId);
+  if (!debate || debate.status !== "active") return;
+
+  const messages = await getDebateMessages(debateId);
+  if (messages.length >= debate.maxRounds * TURNS_PER_ROUND) return;
+
+  const backoffUntil = rateLimitBackoffUntil.get(debateId);
+  let delay = effectiveTurnIntervalMs(debate.turnIntervalMs);
+
+  if (backoffUntil && Date.now() < backoffUntil) {
+    delay = backoffUntil - Date.now() + 200;
+  } else {
+    const emptyStreak = emptyTurnStreak.get(debateId) ?? 0;
+    if (emptyStreak > 0) {
+      delay = Math.max(delay, 1200 + emptyStreak * 700);
+    }
+  }
+
+  scheduleNextTurn(debateId, delay);
+}
 
 export async function finalizeDebate(debateId: string): Promise<void> {
   if (finalizing.has(debateId)) return;
@@ -93,6 +134,11 @@ export async function finalizeDebate(debateId: string): Promise<void> {
 }
 
 async function endDebate(debateId: string, endReason?: string): Promise<void> {
+  const pending = scheduledTurnTimers.get(debateId);
+  if (pending) {
+    clearTimeout(pending);
+    scheduledTurnTimers.delete(debateId);
+  }
   if (endReason) {
     await setDebateEndReason(debateId, endReason);
   }
@@ -283,7 +329,14 @@ export async function processDebateTurn(
   const inflight = turnInflight.get(debateId);
   if (inflight) return inflight;
 
-  const promise = processDebateTurnInner(debateId);
+  const promise = (async () => {
+    try {
+      return await processDebateTurnInner(debateId);
+    } finally {
+      await planNextTurn(debateId);
+    }
+  })();
+
   turnInflight.set(debateId, promise);
   try {
     return await promise;

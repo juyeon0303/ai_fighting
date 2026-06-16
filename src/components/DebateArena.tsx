@@ -155,9 +155,9 @@ export function DebateArena({ debateId }: DebateArenaProps) {
   }, [debateId]);
 
   useEffect(() => {
-    if (messages.length > 0 || status !== "active") return;
+    if (status !== "active") return;
 
-    const bootstrap = async () => {
+    const syncFromKick = async () => {
       try {
         const res = await fetch(`/api/debates/${debateId}/kick`, {
           method: "POST",
@@ -180,26 +180,33 @@ export function DebateArena({ debateId }: DebateArenaProps) {
         if (data.endReason) setEndReason(data.endReason);
         if (data.tokensUsed != null) setTokensUsed(data.tokensUsed);
 
-        if ((data.messageCount ?? 0) > 0) {
-          const full = await fetch(`/api/debates/${debateId}`);
-          if (!full.ok) return;
-          const fullData = await full.json();
-          if (fullData.messages?.length) {
-            setMessages(fullData.messages);
+        const full = await fetch(`/api/debates/${debateId}`);
+        if (!full.ok) return;
+        const fullData = await full.json();
+        if (fullData.messages?.length) {
+          setMessages((prev) => {
+            if (fullData.messages.length <= prev.length) return prev;
             fullData.messages.forEach((m: DebateMessage) =>
               knownMessageIds.current.add(m.id),
             );
-          }
+            return fullData.messages;
+          });
         }
       } catch {
         /* ignore */
       }
     };
 
-    bootstrap();
-    const id = setInterval(bootstrap, 4000);
+    const lastAt = messages[messages.length - 1]?.createdAt;
+    const staleMs = lastAt
+      ? Date.now() - new Date(lastAt).getTime()
+      : Number.POSITIVE_INFINITY;
+    const pollMs = messages.length === 0 || staleMs > 4000 ? 3000 : 6000;
+
+    void syncFromKick();
+    const id = setInterval(syncFromKick, pollMs);
     return () => clearInterval(id);
-  }, [debateId, messages.length, status]);
+  }, [debateId, status, messages.length, messages[messages.length - 1]?.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -227,6 +234,9 @@ export function DebateArena({ debateId }: DebateArenaProps) {
     });
     setStatus(newStatus);
     if (newStatus === "ended") setShowReport(true);
+    if (newStatus === "active") {
+      void fetch(`/api/debates/${debateId}/kick`, { method: "POST" });
+    }
   }
 
   async function sendGodIntervention() {
@@ -432,6 +442,19 @@ export function DebateArena({ debateId }: DebateArenaProps) {
             </p>
           </div>
           <div className="relative flex-1 overflow-y-auto px-5 py-5">
+            {status === "paused" && messages.length > 0 && (
+              <div className="mx-auto mb-4 max-w-2xl rounded-lg border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-center text-sm text-amber-100/90">
+                일시정지 중입니다.{" "}
+                <button
+                  type="button"
+                  onClick={() => void toggleStatus("active")}
+                  className="font-medium text-amber-50 underline underline-offset-2"
+                >
+                  재개
+                </button>
+                를 누르면 자·강·세가 이어서 말합니다.
+              </div>
+            )}
             {messages.length === 0 && status === "active" && (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-sm">
                 {apiConnectionIssue ? (
