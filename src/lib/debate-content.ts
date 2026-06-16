@@ -15,9 +15,6 @@ export { topicUsesSearch };
 const META_LINE =
   /^\s*\*.*\*?\s*$|casual tone|Yes\.|^\s*-\s*(GE|MI|NI|자|강|세|J|K|S)\s*:/i;
 
-const PRODUCT_META =
-  /(?:한놈|두놈|세\s?놈).{0,12}(?:말하고|말한\s?뒤).{0,12}멈|멈추(?:네|고|는)|발언.{0,6}(?:안\s?나|없)/;
-
 const ENGLISH_STAGE =
   /\([^)]*[A-Za-z]{3,}[^)]*\)|^\(?Metaphor\b|^\(?Note\b/i;
 
@@ -46,7 +43,6 @@ export function isLowQualityTurn(text: string): boolean {
   if (!t) return true;
   if ((t.match(/결국/g) ?? []).length >= 3) return true;
   if (ENGLISH_STAGE.test(t)) return true;
-  if (PRODUCT_META.test(t)) return true;
   if (/[A-Za-z]{5,}/.test(t) && (t.match(/[가-힣]/g)?.length ?? 0) < 8) return true;
   return FAKE_CITATION.test(t) && /(?:19|20)\d{2}년/.test(t);
 }
