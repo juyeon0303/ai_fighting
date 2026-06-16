@@ -371,10 +371,10 @@ export function ApiKeySetupPanel({
             <p>{budgetGuide.summary}</p>
             <p className="mt-2 text-white/45">
               1턴 ≈ {budgetGuide.tokensPerTurn.toLocaleString()} 토큰 (발언 1개).
-              4인 1라운드 ≈{" "}
-              {(budgetGuide.tokensPerTurn * 4).toLocaleString()} 토큰.
+              GE·MI·NI 한 바퀴(발언 3개)마다 합의안 ≈{" "}
+              {(budgetGuide.tokensPerTurn * 3).toLocaleString()} 토큰.
               예: 30,000 토큰이면 발언 약 {estimateTokenBudget(30_000, layout).estimatedTurns}개 ·
-              라운드 약 {estimateTokenBudget(30_000, layout).estimatedRounds}회.
+              합의 약 {estimateTokenBudget(30_000, layout).estimatedRounds}회.
             </p>
           </div>
 

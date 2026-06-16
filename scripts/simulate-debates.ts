@@ -105,7 +105,7 @@ function main() {
 
   if (failed > 0) process.exit(1);
 
-  console.log("=== 샘플: 페이커 vs 쵸비 / 라운드2 GE ===\n");
+  console.log("=== 샘플: 페이커 vs 쵸비 / GE 차례 ===\n");
   const history: DebateMessage[] = DEBATE_TURN_ORDER.map((id, i) => ({
     id: `h-${id}`,
     debateId: "sim",

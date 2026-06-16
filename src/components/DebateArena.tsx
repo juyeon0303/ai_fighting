@@ -305,7 +305,9 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                             ? "API 키 오류"
                             : endReason === "empty_turn"
                               ? "응답 생성 실패"
-                              : endReason}
+                              : endReason === "max_rounds"
+                                ? "토론 길이 한도"
+                                : endReason}
                     </span>
                   </>
                 )}

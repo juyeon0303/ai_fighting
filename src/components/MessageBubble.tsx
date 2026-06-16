@@ -45,7 +45,6 @@ export function MessageBubble({ message, prevMessage, isNew }: MessageBubbleProp
             {persona.name}
           </span>
           <span className="text-xs text-white/30">{persona.role}</span>
-          <span className="text-xs text-white/30">라운드 {message.round}</span>
           {message.llmSource && (
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] ${

@@ -2,9 +2,9 @@ import type { DebateMessage, PersonaId } from "./types";
 
 /** 발언 1회 최대 출력 토큰 */
 export const OUTPUT_TOKENS: Record<PersonaId, number> = {
-  atlas: 1024,
-  cipher: 1024,
-  ember: 1024,
+  atlas: 8192,
+  cipher: 8192,
+  ember: 8192,
 };
 
 export function maxOutputTokens(personaId: PersonaId): number {
@@ -33,20 +33,7 @@ export function isIncompleteTurn(content: string): boolean {
   return false;
 }
 
-/** 너무 긴 응답만 자르기 — 문장 경계 우선 */
+/** 글자수 제한 없음 — 공백만 정리 */
 export function clampTurnContent(content: string, _personaId: PersonaId): string {
-  const maxChars = 900;
-  const normalized = content.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxChars) return normalized;
-
-  const sentences = normalized.split(/(?<=[.!?…]|다|임|함|요|봄|해|네|지|줘|거야|같아)\s+/);
-  let out = "";
-  for (const s of sentences) {
-    const next = out ? `${out} ${s}` : s;
-    if (next.length > maxChars) break;
-    out = next;
-  }
-  if (out.length >= 24) return out.trim();
-
-  return `${normalized.slice(0, maxChars - 1)}…`;
+  return content.replace(/\s+/g, " ").trim();
 }

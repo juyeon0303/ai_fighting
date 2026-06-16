@@ -6,8 +6,6 @@ import { DEFAULT_OPENAI_MODEL } from "./openai-models";
 import { DEFAULT_GEMINI_MODEL } from "./gemini-models";
 import { requestGeminiTurn } from "./gemini";
 
-const CONFLICT_KEYWORDS = ["반박", "틀렸", "동의할 수 없", "문제", "위험", "우려"];
-
 function speakerLabel(m: DebateMessage): string {
   return personaDisplayName(
     normalizePersonaId(m.personaId),
@@ -41,10 +39,6 @@ function msgsForGenius(
   return messages.filter((m) => legacy[personaId].includes(m.personaId));
 }
 
-function detectConflict(messages: DebateMessage[]): boolean {
-  const combined = messages.map((m) => m.content).join(" ");
-  return CONFLICT_KEYWORDS.some((k) => combined.includes(k));
-}
 
 function endReasonLabel(endReason?: string | null): string {
   switch (endReason) {
@@ -55,7 +49,7 @@ function endReasonLabel(endReason?: string | null): string {
     case "api_quota":
       return "API 사용 한도 초과";
     case "max_rounds":
-      return "최대 라운드 도달";
+      return "토론 길이 한도";
     case "empty_turn":
       return "응답 생성 실패";
     default:
@@ -115,14 +109,14 @@ function buildOfflineRoundConsensus(
 
   const summary =
     bits.length > 0
-      ? `「${topic}」 라운드 ${round} — ${bits.join(" · ")}`
-      : `「${topic}」 라운드 ${round} 중간 정리`;
+      ? bits.join(" · ")
+      : `「${topic}」에 대한 중간 정리`;
 
   return {
     debateId,
     type: "consensus",
-    title: `라운드 ${round} — 중간 합의안`,
-    summary: summary.slice(0, 200),
+    title: "중간 합의",
+    summary: summary.slice(0, 400),
     round,
     messageId: (anchor ?? roundMessages[0])!.id,
   };
@@ -212,33 +206,23 @@ export async function analyzeRoundForTimeline(
   const debateId = roundMessages[0]!.debateId;
   const lastMessage = roundMessages[roundMessages.length - 1]!;
 
-  if (detectConflict(roundMessages) && round % 2 === 0) {
-    return {
-      debateId,
-      type: "conflict",
-      title: `라운드 ${round} — 격돌`,
-      summary: "천재 3명의 핵심 주장이 정면으로 부딪혔습니다.",
-      round,
-      messageId: lastMessage.id,
-    };
-  }
-
   const historyText = roundMessages
     .map((m) => `[${speakerLabel(m)}] ${m.content}`)
     .join("\n");
 
   const llmResult = await callLLM(
     `토론 주제: "${topic}"
-라운드 ${round} 발언:
+
+최근 발언:
 ${historyText}
 
-위 라운드에서 천재 3명이 공통으로 인정할 수 있는 "중간 합의안" 또는 대화 전환점을 JSON으로 답하세요.
-찬성/반대/중립 입장 분류는 쓰지 마세요.
+위 대화에서 천재 3명이 공통으로 인정할 수 있는 "중간 합의안"을 JSON으로 답하세요.
+합의가 없으면 skip: true. 찬성/반대/중립 분류는 쓰지 마세요.
 
-{"skip": false, "type": "consensus" 또는 "turning_point", "title": "짧은 제목", "summary": "1~2문장 합의안"}
+{"skip": false, "title": "짧은 제목", "summary": "1~3문장 합의안"}
 
 JSON만 출력하세요.`,
-    220,
+    320,
     options,
   );
 
@@ -248,7 +232,7 @@ JSON만 출력하세요.`,
       if (!parsed.skip && parsed.title && parsed.summary) {
         return {
           debateId,
-          type: parsed.type === "turning_point" ? "turning_point" : "consensus",
+          type: "consensus",
           title: parsed.title,
           summary: parsed.summary,
           round,
@@ -301,7 +285,7 @@ export async function generateFinalReport(
 전체 발언:
 ${historyText || "(없음)"}
 
-타임라인 합의/전환점:
+타임라인 합의:
 ${timelineText || "(없음)"}
 
 위 대화의 최종 보고서를 JSON으로 작성하세요. 찬성/반대/중립 분류 없이 천재별 관점으로 정리하세요.

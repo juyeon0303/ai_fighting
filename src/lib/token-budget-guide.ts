@@ -47,7 +47,7 @@ export function estimateTokenBudget(
         : "GPT";
 
   const intervalSec = Math.round(turnIntervalMs / 100) / 10;
-  const summary = `${budget.toLocaleString()} 토큰 ≈ 발언 ${estimatedTurns}개(라운드 ${estimatedRounds}회) · ${layoutLabel} · ${estimatedHours}시간 분량(${intervalSec}초 간격) · ${estimatedUsd}`;
+  const summary = `${budget.toLocaleString()} 토큰 ≈ 발언 ${estimatedTurns}개(합의 약 ${estimatedRounds}회) · ${layoutLabel} · ${estimatedHours}시간 분량(${intervalSec}초 간격) · ${estimatedUsd}`;
 
   return {
     budget,

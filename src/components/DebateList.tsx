@@ -63,7 +63,6 @@ export function DebateList() {
               {debate.topic}
             </p>
             <p className="mt-1 text-xs text-white/35">
-              라운드 {debate.round} ·{" "}
               {new Date(debate.updatedAt).toLocaleString("ko-KR")}
             </p>
           </Link>

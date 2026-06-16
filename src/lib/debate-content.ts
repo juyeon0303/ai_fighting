@@ -39,7 +39,7 @@ export function isLowQualityTurn(text: string): boolean {
   for (const re of ESSAY_RED_FLAGS) {
     if (re.test(t)) flags++;
   }
-  return flags >= 2 || (flags >= 1 && t.length > 160);
+  return flags >= 2;
 }
 
 /** 의심 문장만 제거 (검색 근거 문장은 살릴 여지) */
@@ -76,7 +76,7 @@ export function personaSystemInstruction(
   return [
     `친구들이랑 「${topic}」 가볍게 토론 중. 너는 ${name}.`,
     roles[personaId],
-    "2~4문장, 편한 반말. 재미는 살려도 됨.",
+    "편한 반말. 재미는 살려도 됨. 길이 제한 없음.",
     "사실·숫자는 검색으로 확인한 것만. 모르면 '잘 모르겠는데'만.",
     "대학·실험·%·연구 인용 대잔치 금지. 철학·심리 용어로 분위기만 잡지 마.",
     "빈동의('동의해'만) 금지 — 동의해도 이유 한 줄은 붙여.",
@@ -199,9 +199,9 @@ export function sanitizeTurnOutput(raw: string): string {
 
 export function buildDebateRetryHint(quality = false): string {
   if (quality) {
-    return "에세이·가짜 통계·대학 실험 인용 빼. 주제에 닿는 친구 반말 2~4문장으로 다시.";
+    return "에세이·가짜 통계·대학 실험 인용 빼. 주제에 닿는 친구 반말로 다시.";
   }
-  return "지어낸 근거 넣지 마. 검색 없으면 숫자 빼. 친구 반말 2~4문장으로 다시.";
+  return "지어낸 근거 넣지 마. 검색 없으면 숫자 빼. 친구 반말로 다시.";
 }
 
 /** @deprecated 시뮬 호환 — 멀티턴 첫 user 메시지 검증용 */
