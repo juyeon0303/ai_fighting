@@ -310,6 +310,15 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                     </span>
                   </>
                 )}
+                {process.env.NEXT_PUBLIC_BUILD_SHA &&
+                  process.env.NEXT_PUBLIC_BUILD_SHA !== "local" && (
+                    <>
+                      <span>·</span>
+                      <span className="text-white/22">
+                        build {process.env.NEXT_PUBLIC_BUILD_SHA.slice(0, 7)}
+                      </span>
+                    </>
+                  )}
               </div>
             </div>
             <div className="flex gap-2">

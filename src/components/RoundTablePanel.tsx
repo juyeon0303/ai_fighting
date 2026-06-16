@@ -19,21 +19,21 @@ const SEAT_ANGLES: Record<PersonaId, number> = {
 
 /** 테이블 반지름 + 좌석 간격 (px) — GE(위쪽)는 시각적으로 더 붙게 */
 const ORBIT_PX: Record<PersonaId, number> = {
-  atlas: 102,
-  cipher: 118,
-  ember: 118,
+  atlas: 88,
+  cipher: 112,
+  ember: 112,
 };
 
 function RoundTable({
   topic,
   waiting,
-  sizeClass = "h-[11.5rem] w-[11.5rem] sm:h-[12.5rem] sm:w-[12.5rem]",
+  sizeClass = "h-[12.5rem] w-[12.5rem] sm:h-[14rem] sm:w-[14rem]",
 }: {
   topic: string;
   waiting: boolean;
   sizeClass?: string;
 }) {
-  const chairRadius = 112;
+  const chairRadius = 118;
 
   return (
     <div className="round-table-wrap relative flex shrink-0 items-center justify-center">
@@ -150,7 +150,7 @@ export function RoundTablePanel({
   apiLayout,
 }: RoundTablePanelProps) {
   return (
-    <aside className="round-table-panel flex h-full w-[min(100%,20rem)] shrink-0 flex-col border-r border-white/8 bg-black/15 sm:w-[22rem]">
+    <aside className="round-table-panel flex h-full w-[min(100%,26rem)] shrink-0 flex-col border-r border-white/8 bg-black/15 lg:w-[28rem]">
       <div className="border-b border-white/6 px-4 py-2.5">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-200/35">
           토론석
@@ -159,7 +159,7 @@ export function RoundTablePanel({
       <div className="flex flex-1 items-center justify-center p-4">
         <div
           className="relative"
-          style={{ width: 300, height: 300 }}
+          style={{ width: 340, height: 340 }}
         >
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
             <RoundTable topic={topic} waiting={messageCount === 0} />
@@ -170,7 +170,7 @@ export function RoundTablePanel({
             const orbit = ORBIT_PX[personaId];
             const rad = (angle * Math.PI) / 180;
             const x = Math.cos(rad) * orbit;
-            const y = Math.sin(rad) * orbit + (personaId === "atlas" ? 6 : 0);
+            const y = Math.sin(rad) * orbit + (personaId === "atlas" ? 16 : 0);
             const provider =
               llmMode === "user_api" && apiLayout
                 ? personaProvider(apiLayout, personaId)

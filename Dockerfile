@@ -10,6 +10,8 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+ARG RENDER_GIT_COMMIT=local
+ENV NEXT_PUBLIC_BUILD_SHA=$RENDER_GIT_COMMIT
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
