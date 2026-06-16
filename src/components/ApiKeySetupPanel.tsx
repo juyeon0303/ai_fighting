@@ -11,6 +11,7 @@ import { isLikelyGeminiKey } from "@/lib/gemini";
 import { GEMINI_MODEL_OPTIONS } from "@/lib/gemini-models";
 import { OPENAI_MODEL_OPTIONS } from "@/lib/openai-models";
 import { personaDisplayName } from "@/lib/personas";
+import { TokenDepthGuide } from "./TokenDepthGuide";
 
 const OPENAI_KEYS_URL = "https://platform.openai.com/api-keys";
 const GEMINI_KEYS_URL = "https://aistudio.google.com/apikey";
@@ -21,7 +22,7 @@ const LAYOUT_OPTIONS: Array<{ id: ApiLayout; title: string }> = [
   { id: "gpt_vs_gemini", title: "Mix" },
 ];
 
-const BUDGET_PRESETS = [10_000, 30_000, 100_000, 500_000];
+const BUDGET_PRESETS = [30_000, 100_000, 150_000, 300_000];
 
 interface ApiKeySetupPanelProps {
   layout: ApiLayout;
@@ -280,9 +281,16 @@ export function ApiKeySetupPanel({
               }
               className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 text-sm text-white outline-none focus:border-white/20"
             />
-            <p className="mt-2 text-[11px] leading-relaxed text-white/30">
+            <p className="mt-2 text-[11px] leading-relaxed text-[var(--brand-paper)]/40">
               {budgetGuide.summary}
             </p>
+            <div className="mt-2.5">
+              <TokenDepthGuide
+                budget={maxTokenBudget}
+                layout={layout}
+                tokenSaveMode={tokenSaveMode}
+              />
+            </div>
           </div>
 
           <label className="flex cursor-pointer items-center gap-2 text-xs text-white/45">

@@ -2,7 +2,7 @@ import type { ApiLayout, Debate, PersonaId } from "./types";
 import { decryptApiKey } from "./api-key-crypto";
 import { DEFAULT_GEMINI_MODEL, normalizeGeminiModel } from "./gemini-models";
 import { DEFAULT_OPENAI_MODEL, normalizeOpenaiModel } from "./openai-models";
-import { estimateTokenBudget } from "./token-budget-guide";
+import { tokensForTurn } from "./token-budget-guide";
 
 export type ApiConnectionIssue =
   | "key_decrypt_failed"
@@ -184,12 +184,8 @@ export function getRemainingTokenBudget(debate: {
 
 export function minTokenReserveForDebate(debate: Debate): number {
   const layout = resolveApiLayout(debate) ?? "gemini_only";
-  const perTurn = estimateTokenBudget(
-    10_000,
-    layout,
-    undefined,
-    debate.tokenSaveMode ?? false,
-  ).tokensPerTurn;
+  const save = debate.tokenSaveMode ?? false;
+  const perTurn = tokensForTurn(0, save, layout);
   return perTurn + 200;
 }
 
