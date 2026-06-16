@@ -2,10 +2,9 @@ import {
   getDebate,
   getDebateMessages,
   getDebateReport,
-  getTimelineEvents,
 } from "@/lib/db";
 import { sanitizeDebateForClient } from "@/lib/debate-llm-config";
-import { debateEvents, backfillTimeline, processDebateTurn, startDebateWorker } from "@/lib/debate-engine";
+import { debateEvents, processDebateTurn, startDebateWorker } from "@/lib/debate-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +20,10 @@ export async function GET(
   }
 
   startDebateWorker();
-  await backfillTimeline(id);
 
   const encoder = new TextEncoder();
-  const [existingMessages, timeline, report] = await Promise.all([
+  const [existingMessages, report] = await Promise.all([
     getDebateMessages(id),
-    getTimelineEvents(id),
     getDebateReport(id),
   ]);
 
@@ -41,7 +38,6 @@ export async function GET(
       send("init", {
         debate: sanitizeDebateForClient(debate),
         messages: existingMessages,
-        timeline,
         report,
       });
 
@@ -52,12 +48,6 @@ export async function GET(
       const onMessage = (payload: { debateId: string; message: unknown }) => {
         if (payload.debateId === id) {
           send("message", payload.message);
-        }
-      };
-
-      const onTimeline = (payload: { debateId: string; event: unknown }) => {
-        if (payload.debateId === id) {
-          send("timeline", payload.event);
         }
       };
 
@@ -96,7 +86,6 @@ export async function GET(
       };
 
       debateEvents.on("message", onMessage);
-      debateEvents.on("timeline", onTimeline);
       debateEvents.on("report-status", onReportStatus);
       debateEvents.on("report", onReport);
       debateEvents.on("debate-ended", onEnded);
@@ -121,7 +110,6 @@ export async function GET(
         clearInterval(heartbeat);
         clearInterval(turnNudge);
         debateEvents.off("message", onMessage);
-        debateEvents.off("timeline", onTimeline);
         debateEvents.off("report-status", onReportStatus);
         debateEvents.off("report", onReport);
         debateEvents.off("debate-ended", onEnded);

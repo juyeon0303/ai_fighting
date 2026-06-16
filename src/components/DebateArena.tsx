@@ -5,7 +5,6 @@ import type {
   ApiLayout,
   DebateMessage,
   DebateReport,
-  TimelineEvent,
 } from "@/lib/types";
 import { parseTopic, getModeLabel } from "@/lib/topic-context";
 import { lastPersonaId as resolveLastPersonaId } from "@/lib/personas";
@@ -17,7 +16,6 @@ import {
 } from "@/lib/debate-llm-config";
 import { ArenaEffects } from "./ArenaEffects";
 import { RoundTablePanel } from "./RoundTablePanel";
-import { DebateTimeline } from "./DebateTimeline";
 import { DebateReportPanel } from "./DebateReportPanel";
 import { DeleteDebateButton } from "./DeleteDebateButton";
 import { MessageBubble, TypingIndicator } from "./MessageBubble";
@@ -32,7 +30,6 @@ export function DebateArena({ debateId }: DebateArenaProps) {
   const tokenAlertShown = useRef(false);
 
   const [messages, setMessages] = useState<DebateMessage[]>([]);
-  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [report, setReport] = useState<DebateReport | null>(null);
   const [reportStatus, setReportStatus] = useState("none");
   const [status, setStatus] = useState("active");
@@ -49,9 +46,6 @@ export function DebateArena({ debateId }: DebateArenaProps) {
   const [connected, setConnected] = useState(false);
   const [flashKey, setFlashKey] = useState(0);
   const [isClash, setIsClash] = useState(false);
-  const [highlightTimelineId, setHighlightTimelineId] = useState<string | null>(
-    null,
-  );
   const [showReport, setShowReport] = useState(false);
   const [newMessageIds, setNewMessageIds] = useState<Set<string>>(new Set());
   const [godInput, setGodInput] = useState("");
@@ -65,7 +59,6 @@ export function DebateArena({ debateId }: DebateArenaProps) {
     es.addEventListener("init", (e) => {
       const data = JSON.parse(e.data);
       setMessages(data.messages);
-      setTimeline(data.timeline ?? []);
       setReport(data.report ?? null);
       setReportStatus(data.debate.reportStatus ?? "none");
       setStatus(data.debate.status);
@@ -114,13 +107,6 @@ export function DebateArena({ debateId }: DebateArenaProps) {
           });
         }, 800);
       }
-    });
-
-    es.addEventListener("timeline", (e) => {
-      const event = JSON.parse(e.data) as TimelineEvent;
-      setTimeline((prev) => [...prev, event]);
-      setHighlightTimelineId(event.id);
-      setTimeout(() => setHighlightTimelineId(null), 2000);
     });
 
     es.addEventListener("report-status", (e) => {
@@ -308,12 +294,6 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                       ? "⏸ 일시정지"
                       : "✅ 토론 종료"}
                 </span>
-                {timeline.length > 0 && (
-                  <>
-                    <span>·</span>
-                    <span>합의 {timeline.filter((e) => e.type === "consensus").length}건</span>
-                  </>
-                )}
                 {tokenSaveMode && (
                   <>
                     <span>·</span>
@@ -495,7 +475,6 @@ export function DebateArena({ debateId }: DebateArenaProps) {
               <div className="mx-auto max-w-2xl">
                 <div className="mb-2 flex items-center gap-2 text-xs text-amber-200/80">
                   <span className="font-semibold text-amber-100">신</span>
-                  <span className="text-white/35">· 토론 중 태클·방향 조정</span>
                 </div>
                 <div className="flex gap-2">
                   <textarea
@@ -526,8 +505,6 @@ export function DebateArena({ debateId }: DebateArenaProps) {
             </div>
           )}
         </section>
-
-        <DebateTimeline events={timeline} highlightId={highlightTimelineId} />
       </div>
 
       <DebateReportPanel

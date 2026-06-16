@@ -1,16 +1,13 @@
 import { EventEmitter } from "events";
-import { analyzeRoundForTimeline, generateFinalReport } from "./analysis";
+import { generateFinalReport } from "./analysis";
 import {
   addMessage,
   tryAddMessage,
-  addTimelineEvent,
   addTokenUsage,
   getActiveDebates,
   getDebate,
   getDebateMessages,
   getDebateReport,
-  getTimelineEvents,
-  hasTimelineForRound,
   saveDebateReport,
   setDebateEndReason,
   updateDebateStatus,
@@ -50,32 +47,6 @@ const finalizing = new Set<string>();
 let workerStarted = false;
 let workerTimer: ReturnType<typeof setInterval> | null = null;
 
-async function analyzeRound(
-  debateId: string,
-  round: number,
-): Promise<void> {
-  if (await hasTimelineForRound(debateId, round)) return;
-
-  const debate = await getDebate(debateId);
-  if (!debate) return;
-
-  const messages = await getDebateMessages(debateId);
-  const analysisOpts = resolveDebateAnalysisOptions(debate!);
-  const eventData = await analyzeRoundForTimeline(
-    debate!.topic,
-    messages,
-    round,
-    analysisOpts
-      ? { ...analysisOpts, tokenSaveMode: debate!.tokenSaveMode ?? false }
-      : undefined,
-  );
-
-  if (!eventData) return;
-
-  const event = await addTimelineEvent(eventData);
-  debateEvents.emit("timeline", { debateId, event });
-}
-
 export async function finalizeDebate(debateId: string): Promise<void> {
   if (finalizing.has(debateId)) return;
 
@@ -98,13 +69,11 @@ export async function finalizeDebate(debateId: string): Promise<void> {
     });
 
     const messages = await getDebateMessages(debateId);
-    const timeline = await getTimelineEvents(debateId);
     const analysisOpts = resolveDebateAnalysisOptions(debate);
 
     const reportData = await generateFinalReport(
       debate.topic,
       messages,
-      timeline,
       {
         endReason: debate.endReason,
         ...analysisOpts,
@@ -299,11 +268,6 @@ async function processDebateTurnInner(
       });
     }
 
-    const updatedMessages = await getDebateMessages(debateId);
-    if (updatedMessages.length % TURNS_PER_ROUND === 0) {
-      analyzeRound(debateId, round).catch(console.error);
-    }
-
     return message;
   } catch (error) {
     console.error(`[debate ${debateId}] turn failed:`, error);
@@ -370,22 +334,8 @@ export function stopDebateWorker(): void {
   workerStarted = false;
 }
 
-export async function backfillTimeline(debateId: string): Promise<void> {
-  const debate = await getDebate(debateId);
-  if (!debate) return;
-
-  const messages = await getDebateMessages(debateId);
-  const completedRounds = Math.floor(messages.length / TURNS_PER_ROUND);
-
-  for (let round = 1; round <= completedRounds; round++) {
-    if (await hasTimelineForRound(debateId, round)) continue;
-    await analyzeRound(debateId, round);
-  }
-}
-
 export async function kickstartDebate(debateId: string): Promise<void> {
   startDebateWorker();
-  await backfillTimeline(debateId);
   await processDebateTurn(debateId);
 }
 

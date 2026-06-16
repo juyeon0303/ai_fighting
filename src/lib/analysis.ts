@@ -1,6 +1,6 @@
 import OpenAI from "openai";
-import type { ApiProvider, DebateMessage, DebateReport, TimelineEvent } from "./types";
-import { DEBATE_TURN_ORDER, GOD_DISPLAY_NAME, isGodSpeaker, normalizePersonaId, personaDisplayName, providerFromMessageSource, TURNS_PER_ROUND } from "./personas";
+import type { ApiProvider, DebateMessage, DebateReport } from "./types";
+import { DEBATE_TURN_ORDER, GOD_DISPLAY_NAME, isGodSpeaker, normalizePersonaId, personaDisplayName, providerFromMessageSource } from "./personas";
 import { parseTopic } from "./topic-context";
 import { DEFAULT_OPENAI_MODEL } from "./openai-models";
 import { DEFAULT_GEMINI_MODEL } from "./gemini-models";
@@ -186,10 +186,6 @@ function cleanReportItems(items: string[] | undefined): string[] {
   return (items ?? []).map((s) => s.trim()).filter((s) => !isBoilerplateReportText(s));
 }
 
-function getRoundMessages(messages: DebateMessage[], round: number): DebateMessage[] {
-  return messages.filter((m) => m.round === round);
-}
-
 function msgsForGenius(
   personaId: "atlas" | "cipher" | "ember",
   messages: DebateMessage[],
@@ -255,51 +251,15 @@ async function callLLM(
   }
 }
 
-function buildOfflineRoundConsensus(
-  topic: string,
-  roundMessages: DebateMessage[],
-  round: number,
-): Omit<TimelineEvent, "id" | "createdAt"> {
-  const atlas = msgsForGenius("atlas", roundMessages)[0];
-  const cipher = msgsForGenius("cipher", roundMessages)[0];
-  const ember = msgsForGenius("ember", roundMessages)[0];
-  const debateId = roundMessages[0]!.debateId;
-  const anchor = ember ?? cipher ?? atlas;
-
-  const bits = [
-    atlas ? `${speakerLabel(atlas)}: ${atlas.content.slice(0, 50)}` : null,
-    cipher ? `${speakerLabel(cipher)}: ${cipher.content.slice(0, 50)}` : null,
-    ember ? `${speakerLabel(ember)}: ${ember.content.slice(0, 50)}` : null,
-  ].filter(Boolean);
-
-  const summary =
-    bits.length > 0
-      ? bits.join(" · ")
-      : `「${topic}」에 대한 중간 정리`;
-
-  return {
-    debateId,
-    type: "consensus",
-    title: "중간 합의",
-    summary: summary.slice(0, 400),
-    round,
-    messageId: (anchor ?? roundMessages[0])!.id,
-  };
-}
-
 function buildOfflineReport(
   topic: string,
   messages: DebateMessage[],
-  timeline: TimelineEvent[],
   endReason?: string | null,
 ): Omit<DebateReport, "debateId" | "generatedAt"> {
   const ctx = parseTopic(topic);
   const atlasMsgs = msgsForGenius("atlas", messages);
   const cipherMsgs = msgsForGenius("cipher", messages);
   const emberMsgs = msgsForGenius("ember", messages);
-  const consensusFromTimeline = timeline
-    .filter((e) => e.type === "consensus")
-    .map((e) => e.summary);
 
   if (messages.length === 0) {
     const why = endReasonLabel(endReason);
@@ -333,12 +293,8 @@ function buildOfflineReport(
 
   return {
     title: `${topic} — 대화 종합 보고서`,
-    executiveSummary: `총 ${messages.length}개 발언, 타임라인 ${timeline.length}건을 거치며 ${topicBrief}를 다뤘다. ${namesSummary(messages)}가 각자 시각으로 대화했다.`,
-    consensusPoints: cleanReportItems(
-      consensusFromTimeline.length > 0
-        ? consensusFromTimeline
-        : personaSummaryBullets(emberMsgs, 2),
-    ),
+    executiveSummary: `총 ${messages.length}개 발언으로 ${topicBrief}를 다뤘다. ${namesSummary(messages)}가 각자 시각으로 대화했다.`,
+    consensusPoints: cleanReportItems(personaSummaryBullets(emberMsgs, 2)),
     proArguments: personaSummaryBullets(atlasMsgs, 3),
     conArguments: personaSummaryBullets(cipherMsgs, 3),
     emberArguments: personaSummaryBullets(emberMsgs, 3),
@@ -348,63 +304,9 @@ function buildOfflineReport(
   };
 }
 
-export async function analyzeRoundForTimeline(
-  topic: string,
-  messages: DebateMessage[],
-  round: number,
-  options?: { apiKey?: string; model?: string; provider?: ApiProvider; tokenSaveMode?: boolean },
-): Promise<Omit<TimelineEvent, "id" | "createdAt"> | null> {
-  const roundMessages = getRoundMessages(messages, round);
-  if (roundMessages.length < TURNS_PER_ROUND) return null;
-
-  const debateId = roundMessages[0]!.debateId;
-  const lastMessage = roundMessages[roundMessages.length - 1]!;
-
-  const historyText = roundMessages
-    .map((m) => `[${speakerLabel(m)}] ${m.content}`)
-    .join("\n");
-
-  const llmResult = await callLLM(
-    `토론 주제: "${topic}"
-
-최근 발언:
-${historyText}
-
-위 대화에서 자·강·세가 공통으로 인정할 수 있는 "중간 합의안"을 JSON으로 답하세요.
-합의가 없으면 skip: true. 찬성/반대/중립 분류는 쓰지 마세요.
-
-{"skip": false, "title": "짧은 제목", "summary": "1~3문장 합의안"}
-
-JSON만 출력하세요.`,
-    options?.tokenSaveMode ? 160 : 320,
-    options,
-  );
-
-  if (llmResult) {
-    try {
-      const parsed = JSON.parse(llmResult.replace(/```json|```/g, "").trim());
-      if (!parsed.skip && parsed.title && parsed.summary) {
-        return {
-          debateId,
-          type: "consensus",
-          title: parsed.title,
-          summary: parsed.summary,
-          round,
-          messageId: lastMessage.id,
-        };
-      }
-    } catch {
-      // offline fallback below
-    }
-  }
-
-  return buildOfflineRoundConsensus(topic, roundMessages, round);
-}
-
 export async function generateFinalReport(
   topic: string,
   messages: DebateMessage[],
-  timeline: TimelineEvent[],
   options?: {
     endReason?: string | null;
     apiKey?: string;
@@ -441,10 +343,6 @@ export async function generateFinalReport(
     ),
   );
 
-  const timelineText = timeline
-    .map((e) => `- [${e.type}] ${e.title}: ${e.summary}`)
-    .join("\n");
-
   const ctx = parseTopic(topic);
 
   const llmResult = await callLLM(
@@ -452,9 +350,6 @@ export async function generateFinalReport(
 
 전체 발언:
 ${historyText || "(없음)"}
-
-타임라인 합의:
-${timelineText || "(없음)"}
 
 위 대화의 최종 보고서를 JSON으로 작성하세요.
 - 찬성/반대/중립 분류 금지. ${atlasName}·${cipherName}·${emberName} 세 사람 관점을 각각 정리.
@@ -505,5 +400,5 @@ JSON만 출력하세요.`,
     }
   }
 
-  return buildOfflineReport(topic, messages, timeline, options?.endReason);
+  return buildOfflineReport(topic, messages, options?.endReason);
 }
