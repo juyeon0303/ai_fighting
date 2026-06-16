@@ -170,26 +170,47 @@ export function DebateArena({ debateId }: DebateArenaProps) {
   useEffect(() => {
     if (messages.length > 0 || status !== "active") return;
 
-    const poll = async () => {
+    const bootstrap = async () => {
       try {
-        const res = await fetch(`/api/debates/${debateId}`);
+        const res = await fetch(`/api/debates/${debateId}/kick`, {
+          method: "POST",
+        });
         if (!res.ok) return;
-        const data = await res.json();
-        if (data.messages?.length) {
-          setMessages(data.messages);
-          data.messages.forEach((m: DebateMessage) =>
-            knownMessageIds.current.add(m.id),
-          );
+        const data = (await res.json()) as {
+          messageCount?: number;
+          status?: string;
+          endReason?: string | null;
+          tokensUsed?: number;
+          debate?: {
+            apiConnectionIssue?: typeof apiConnectionIssue;
+          };
+        };
+
+        if (data.debate?.apiConnectionIssue) {
+          setApiConnectionIssue(data.debate.apiConnectionIssue);
         }
         if (data.status) setStatus(data.status);
+        if (data.endReason) setEndReason(data.endReason);
         if (data.tokensUsed != null) setTokensUsed(data.tokensUsed);
+
+        if ((data.messageCount ?? 0) > 0) {
+          const full = await fetch(`/api/debates/${debateId}`);
+          if (!full.ok) return;
+          const fullData = await full.json();
+          if (fullData.messages?.length) {
+            setMessages(fullData.messages);
+            fullData.messages.forEach((m: DebateMessage) =>
+              knownMessageIds.current.add(m.id),
+            );
+          }
+        }
       } catch {
         /* ignore */
       }
     };
 
-    const id = setInterval(poll, 3000);
-    poll();
+    bootstrap();
+    const id = setInterval(bootstrap, 4000);
     return () => clearInterval(id);
   }, [debateId, messages.length, status]);
 
@@ -294,15 +315,17 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                           )}
                         </span>
                       )}
-                      {tokensUsed === 0 && messages.length > 0 && status === "active" && (
+                      {tokensUsed === 0 && status === "active" && (
                         <span className="text-amber-400/90">
                           {" "}
                           ·{" "}
                           {apiConnectionIssue === "key_decrypt_failed"
-                            ? "API 키 복호화 실패 — 토론 삭제 후 새로 만들기"
+                            ? "API 키 복호화 실패 — 새 토론에서 키 다시 입력"
                             : apiConnectionIssue === "key_missing"
                               ? "API 키 없음 — 새 토론에서 키 다시 입력"
-                              : "API 응답 대기 중"}
+                              : messages.length === 0
+                                ? "첫 발언 생성 중…"
+                                : "API 응답 대기 중"}
                         </span>
                       )}
                     </span>
@@ -405,9 +428,27 @@ export function DebateArena({ debateId }: DebateArenaProps) {
             </p>
           </div>
           <div className="relative flex-1 overflow-y-auto px-5 py-5">
-            {messages.length === 0 && (
+            {messages.length === 0 && status === "active" && (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-sm">
+                {apiConnectionIssue ? (
+                  <p className="text-center text-amber-400/90">
+                    {apiConnectionIssue === "key_decrypt_failed"
+                      ? "API 키를 복호화하지 못했습니다. Render의 API_KEY_ENCRYPTION_SECRET 확인 후 새 토론을 만들어 주세요."
+                      : "API 키가 저장되지 않았습니다. 홈에서 키를 다시 입력해 새 토론을 시작해 주세요."}
+                  </p>
+                ) : (
+                  <>
+                    <TypingIndicator />
+                    <p className="text-[var(--brand-gold)]/45">
+                      자·강·세가 원탁에 앉는 중...
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+            {messages.length === 0 && status !== "active" && (
               <div className="flex h-full items-center justify-center text-sm text-[var(--brand-gold)]/35">
-                자·강·세가 원탁에 앉는 중...
+                발언이 없습니다
               </div>
             )}
             <div className="mx-auto max-w-2xl space-y-0">

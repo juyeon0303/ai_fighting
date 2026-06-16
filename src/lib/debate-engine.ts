@@ -156,6 +156,12 @@ async function processDebateTurnInner(
     const personaId = pickNextSpeaker(messages, debateId);
 
     const runtime = resolvePersonaLlmRuntime(debate, personaId);
+    if (!runtime.apiKey) {
+      console.warn(`[debate ${debateId}] missing API key for ${personaId}`);
+      await endDebate(debateId, "invalid_api_key");
+      return null;
+    }
+
     const turn = await generateDebateTurn(
       debate.topic,
       personaId,
@@ -288,6 +294,8 @@ async function processDebateTurnInner(
 export async function processDebateTurn(
   debateId: string,
 ): Promise<DebateMessage | null> {
+  startDebateWorker();
+
   const inflight = turnInflight.get(debateId);
   if (inflight) return inflight;
 

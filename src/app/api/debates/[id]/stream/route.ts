@@ -45,6 +45,10 @@ export async function GET(
         report,
       });
 
+      if (debate.status === "active") {
+        processDebateTurn(id).catch(console.error);
+      }
+
       const onMessage = (payload: { debateId: string; message: unknown }) => {
         if (payload.debateId === id) {
           send("message", payload.message);

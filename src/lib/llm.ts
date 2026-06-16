@@ -206,7 +206,7 @@ export async function generateDebateTurn(
   const source = runtime.provider === "gemini" ? "gemini" : "openai";
   const save = runtime.tokenSaveMode;
   const temperature = save ? 0.88 : 0.94;
-  const googleSearch = topicUsesSearch(ctx);
+  const googleSearch = !save && topicUsesSearch(ctx);
 
   if (!runtime.apiKey) {
     return {
