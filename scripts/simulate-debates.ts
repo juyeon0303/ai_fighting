@@ -5,7 +5,7 @@
 import { parseTopic, getModeLabel } from "../src/lib/topic-context";
 import { buildGeminiContents } from "../src/lib/debate-content";
 import { isTurnComplete } from "../src/lib/debate-turn-budget";
-import { DEBATE_TURN_ORDER } from "../src/lib/personas";
+import { canAppendTurn, DEBATE_TURN_ORDER } from "../src/lib/personas";
 import type { DebateMessage } from "../src/lib/types";
 
 const TEST_TOPICS = [
@@ -61,6 +61,37 @@ function main() {
     }
   }
   console.log("[PASS] turn completeness checks\n");
+
+  const corrupt: DebateMessage[] = [
+    {
+      id: "c1",
+      debateId: "sim",
+      personaId: "atlas",
+      content: "a",
+      round: 1,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "c2",
+      debateId: "sim",
+      personaId: "ember",
+      content: "b",
+      round: 1,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "c3",
+      debateId: "sim",
+      personaId: "cipher",
+      content: "c",
+      round: 1,
+      createdAt: new Date().toISOString(),
+    },
+  ];
+  if (!canAppendTurn(corrupt, "atlas")) {
+    throw new Error("corrupt history must allow count-based recovery (atlas)");
+  }
+  console.log("[PASS] turn slot recovery after order skew\n");
 
   let passed = 0;
   let failed = 0;

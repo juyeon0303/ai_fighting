@@ -98,16 +98,10 @@ export function canAppendTurn(
     count,
   );
   if (expected !== personaId) return false;
-
   if (count === 0) return true;
 
   const last = normalizePersonaId(messages[count - 1]!.personaId);
-  if (last === personaId) return false;
-
-  const lastIdx = DEBATE_TURN_ORDER.indexOf(last);
-  if (lastIdx < 0) return true;
-
-  return DEBATE_TURN_ORDER[(lastIdx + 1) % TURNS_PER_ROUND] === personaId;
+  return last !== personaId;
 }
 
 export function getPersona(

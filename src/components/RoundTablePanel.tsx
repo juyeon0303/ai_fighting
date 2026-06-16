@@ -4,7 +4,6 @@ import type { ApiLayout, PersonaId } from "@/lib/types";
 import {
   DEBATE_TURN_ORDER,
   PERSONA_META,
-  geniusLens,
   normalizePersonaId,
   personaDisplayName,
 } from "@/lib/personas";
@@ -119,9 +118,6 @@ function SeatBadge({
       </div>
       <p className="mt-1.5 text-xs font-bold" style={{ color: meta.color }}>
         {name}
-      </p>
-      <p className="max-w-[4.5rem] truncate text-center text-[9px] text-white/40">
-        {geniusLens(personaId)}
       </p>
       {llmMode === "user_api" && apiLayout && (
         <p className="text-[8px] text-white/28">{providerLabel(provider)}</p>

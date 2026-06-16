@@ -47,7 +47,6 @@ export function MessageBubble({
         <span className="text-sm font-semibold" style={{ color: persona.color }}>
           {persona.name}
         </span>
-        <span className="text-[11px] text-white/28">{persona.role}</span>
         <span className="text-[11px] text-white/22">{time}</span>
         {message.llmSource && (
           <span

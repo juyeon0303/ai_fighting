@@ -145,7 +145,7 @@ export function ApiKeySetupPanel({
   rememberKey,
   onRememberKeyChange,
 }: ApiKeySetupPanelProps) {
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(true);
 
   const budgetGuide = useMemo(
     () => estimateTokenBudget(maxTokenBudget, layout, undefined, tokenSaveMode),
