@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { generateFinalReport, buildOfflineReport } from "./analysis";
+import { generateFinalReport, buildStructuredReport } from "./analysis";
 import {
   addMessage,
   tryAddMessage,
@@ -130,7 +130,7 @@ async function finalizeDebateInner(debateId: string): Promise<void> {
       );
     } catch (error) {
       console.error(`[debate ${debateId}] report LLM failed:`, error);
-      reportData = buildOfflineReport(
+      reportData = buildStructuredReport(
         debate.topic,
         messages,
         debate.endReason,
@@ -151,7 +151,7 @@ async function finalizeDebateInner(debateId: string): Promise<void> {
       if (!debate) return;
       const messages = await getDebateMessages(debateId);
       const report = await saveDebateReport({
-        ...buildOfflineReport(debate.topic, messages, debate.endReason),
+        ...buildStructuredReport(debate.topic, messages, debate.endReason),
         debateId,
         generatedAt: new Date().toISOString(),
       });

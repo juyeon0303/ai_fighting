@@ -1,10 +1,16 @@
-import OpenAI from "openai";
 import type { ApiProvider, DebateMessage, DebateReport } from "./types";
-import { DEBATE_TURN_ORDER, GOD_DISPLAY_NAME, isGodSpeaker, normalizePersonaId, personaDisplayName, providerFromMessageSource } from "./personas";
+import {
+  DEBATE_TURN_ORDER,
+  GOD_DISPLAY_NAME,
+  isGodSpeaker,
+  normalizePersonaId,
+  personaDisplayName,
+  providerFromMessageSource,
+} from "./personas";
 import { parseTopic } from "./topic-context";
-import { DEFAULT_OPENAI_MODEL } from "./openai-models";
-import { DEFAULT_GEMINI_MODEL } from "./gemini-models";
-import { requestGeminiTurn } from "./gemini";
+
+const MIN_MESSAGES_FOR_FULL_REPORT = 9;
+const PERSONA_BULLET_MAX = 2;
 
 function speakerLabel(m: DebateMessage): string {
   if (isGodSpeaker(m.personaId)) return GOD_DISPLAY_NAME;
@@ -26,33 +32,16 @@ function namesSummary(messages: DebateMessage[]): string {
   }).join("·");
 }
 
-function personaSummaryBullets(
-  msgs: DebateMessage[],
-  maxItems = 3,
-): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-
-  for (const msg of [...msgs].reverse()) {
-    const raw = msg.content.trim().replace(/\s+/g, " ");
-    if (raw.length < 10) continue;
-
-    const key = raw.slice(0, 28);
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    let line = raw;
-    if (line.length > 110) {
-      const cut = line.slice(0, 110);
-      const breakAt = Math.max(cut.lastIndexOf(" "), cut.lastIndexOf("."));
-      line = `${(breakAt > 40 ? cut.slice(0, breakAt) : cut).trim()}…`;
-    }
-
-    out.push(line);
-    if (out.length >= maxItems) break;
-  }
-
-  return out;
+function personaProviderFor(
+  personaId: "atlas" | "cipher" | "ember",
+  messages: DebateMessage[],
+): ApiProvider {
+  const msg = messages.find(
+    (m) =>
+      !isGodSpeaker(m.personaId) &&
+      normalizePersonaId(m.personaId) === personaId,
+  );
+  return msg ? providerFromMessageSource(msg.llmSource) : "gemini";
 }
 
 function isBoilerplateReportText(text: string): boolean {
@@ -61,8 +50,7 @@ function isBoilerplateReportText(text: string): boolean {
   return (
     /추가 근거와 사례|다시 토론을 이어|논거를 더 쌓|비교 기준.*통일|개인 취향 차이|실행 권고|권한다\.?$/.test(
       t,
-    ) ||
-    t.length < 8
+    ) || t.length < 8
   );
 }
 
@@ -70,18 +58,26 @@ function isWishyWashyConclusion(text: string): boolean {
   const t = text.trim();
   if (!t || t.length < 10) return true;
   return (
-    /(?:양쪽|둘\s*다|모두|각(?:기|자)|서로\s*다른|각각의?\s*매력|즐거움을\s*준|확인(?:했|하)|도달(?:했|하))/.test(
+    (/(?:양쪽|둘\s*다|모두|각(?:기|자)|서로\s*다른|각각의?\s*매력|즐거움을\s*준|확인(?:했|하)|도달(?:했|하))/.test(
       t,
     ) &&
-    !/(?:낫|우위|선|추천|pick|이긴|압도|손|탑|정답|결론(?:은|이)\s*[:：]?\s*\S{2,})/i.test(
-      t,
-    )
-  ) ||
+      !/(?:낫|우위|선|추천|pick|이긴|압도|손|탑|정답|결론(?:은|이)\s*[:：]?\s*\S{2,})/i.test(
+        t,
+      )) ||
     /(?:단일\s*정답|정답\s*없|시각에\s*따라|취향\s*차|상황(?:에)?\s*따라|애매|중립|균형\s*잡|양보\s*없)/.test(
       t,
     ) ||
-    /(?:운영\s*방식|매력|다양|공존|공존|조화)/.test(t) &&
-      !/(?:낫|우위|선택|추천|손)/.test(t);
+    (/(?:운영\s*방식|매력|다양|공존|조화)/.test(t) &&
+      !/(?:낫|우위|선택|추천|손)/.test(t))
+  );
+}
+
+function clipLine(text: string, max = 96): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const breakAt = Math.max(cut.lastIndexOf(" "), cut.lastIndexOf("."));
+  return `${(breakAt > 40 ? cut.slice(0, breakAt) : cut).trim()}…`;
 }
 
 function sideAdvocacyScore(messages: DebateMessage[], side: string): number {
@@ -93,7 +89,6 @@ function sideAdvocacyScore(messages: DebateMessage[], side: string): number {
   for (const m of messages) {
     const t = m.content;
     if (!t.includes(needle) && !t.includes(short)) continue;
-
     if (/(?:낫|우위|강하|좋|쎄|압도|독보|탑|1\s*등|이긴|선택|추천|pick|손(?:에)?)/i.test(t)) {
       score += 2;
     }
@@ -112,6 +107,7 @@ function extractDecisiveLine(messages: DebateMessage[]): string | null {
     /(?:양쪽|둘\s*다|모두|각(?:기|자)|취향|정답\s*없|매력|확인(?:했|하)|도달(?:했|하)|운영\s*방식)/;
 
   for (const m of [...messages].reverse()) {
+    if (isGodSpeaker(m.personaId)) continue;
     const parts = m.content
       .split(/(?<=[.!?…]|다|임|함|요|지|야|어|냐|네|거야|같아|거든|잖아|래|줘|ㅋ|ㅎ)\s+/)
       .map((s) => s.trim())
@@ -121,7 +117,7 @@ function extractDecisiveLine(messages: DebateMessage[]): string | null {
       const line = parts[i]!;
       if (line.length < 14 || hedgeRe.test(line)) continue;
       if (decisiveRe.test(line)) {
-        return line.length > 200 ? `${line.slice(0, 197).trim()}…` : line;
+        return clipLine(line, 180);
       }
     }
   }
@@ -132,10 +128,15 @@ function extractDecisiveLine(messages: DebateMessage[]): string | null {
 function buildDecisiveConclusion(
   topic: string,
   messages: DebateMessage[],
+  shortDebate: boolean,
 ): string {
   const ctx = parseTopic(topic);
   const line = extractDecisiveLine(messages);
-  if (line && !isWishyWashyConclusion(line)) return line;
+  if (line && !isWishyWashyConclusion(line)) {
+    return shortDebate
+      ? `지금까지 논의 기준으로 보면, ${line}`
+      : line;
+  }
 
   const { sideA, sideB, debateQuestion, mode } = ctx;
 
@@ -143,12 +144,18 @@ function buildDecisiveConclusion(
     const scoreA = sideAdvocacyScore(messages, sideA);
     const scoreB = sideAdvocacyScore(messages, sideB);
     if (scoreA > scoreB) {
-      return `이 대화 기준으로는 ${sideA}가 ${sideB}보다 한 수 위다.`;
+      return shortDebate
+        ? `초기 논의만 놓고도 ${sideA} 쪽 논거가 ${sideB}보다 조금 더 설득력 있다.`
+        : `이 대화 기준으로는 ${sideA}가 ${sideB}보다 한 수 위다.`;
     }
     if (scoreB > scoreA) {
-      return `이 대화 기준으로는 ${sideB}가 ${sideA}보다 한 수 위다.`;
+      return shortDebate
+        ? `초기 논의만 놓고도 ${sideB} 쪽 논거가 ${sideA}보다 조금 더 설득력 있다.`
+        : `이 대화 기준으로는 ${sideB}가 ${sideA}보다 한 수 위다.`;
     }
-    return `${sideA}와 ${sideB} 중 하나를 고르라면, 후반 논거 기준 ${sideA} 쪽이 더 납득된다.`;
+    return shortDebate
+      ? `${sideA}와 ${sideB} 중 하나를 고르라면, 지금까지 나온 말은 ${sideA} 쪽에 기울어 있다.`
+      : `${sideA}와 ${sideB} 중 하나를 고르라면, 후반 논거 기준 ${sideA} 쪽이 더 납득된다.`;
   }
 
   if (mode === "proposition") {
@@ -158,32 +165,39 @@ function buildDecisiveConclusion(
     const no = messages.filter((m) =>
       /(?:반대|아닌|틀렸|안\s*(?:돼|됨|해)|부정|불가)/.test(m.content),
     ).length;
-    if (yes > no) return `「${debateQuestion}」— 대화 흐름상 찬성 쪽이 더 설득력 있다.`;
-    if (no > yes) return `「${debateQuestion}」— 대화 흐름상 반대 쪽이 더 설득력 있다.`;
+    if (yes > no) {
+      return shortDebate
+        ? `「${debateQuestion}」— 지금까지 흐름만 보면 찬성 쪽이 앞선다.`
+        : `「${debateQuestion}」— 대화 흐름상 찬성 쪽이 더 설득력 있다.`;
+    }
+    if (no > yes) {
+      return shortDebate
+        ? `「${debateQuestion}」— 지금까지 흐름만 보면 반대 쪽이 앞선다.`
+        : `「${debateQuestion}」— 대화 흐름상 반대 쪽이 더 설득력 있다.`;
+    }
   }
 
-  const last = messages[messages.length - 1]?.content.trim();
-  if (last && last.length >= 16 && !isWishyWashyConclusion(last)) {
-    return last.length > 200 ? `${last.slice(0, 197).trim()}…` : last;
+  const lastAi = [...messages]
+    .reverse()
+    .find((m) => !isGodSpeaker(m.personaId));
+  const lastText = lastAi?.content.trim();
+  if (lastText && lastText.length >= 16 && !isWishyWashyConclusion(lastText)) {
+    const clipped = clipLine(lastText, 180);
+    return shortDebate
+      ? `아직 논의 초반이지만, 마지막 흐름은 "${clipped}" 쪽에 기울어 있다.`
+      : clipped;
   }
 
-  return `「${ctx.displayTopic || topic}」— ${namesSummary(messages)} 대화를 종합하면, 후반에 나온 주장 쪽이 더 납득된다.`;
-}
-
-function finalizeConclusion(
-  raw: string | undefined,
-  topic: string,
-  messages: DebateMessage[],
-): string {
-  const text = String(raw ?? "").trim();
-  if (text && !isWishyWashyConclusion(text) && !isBoilerplateReportText(text)) {
-    return text;
-  }
-  return buildDecisiveConclusion(topic, messages);
+  const names = namesSummary(messages);
+  return shortDebate
+    ? `「${ctx.topic}」— 발언이 적지만 ${names} 중 후반 발언 방향을 잠정 결론으로 본다.`
+    : `「${ctx.topic}」— ${names} 대화를 종합하면, 후반에 나온 주장 쪽이 더 납득된다.`;
 }
 
 function cleanReportItems(items: string[] | undefined): string[] {
-  return (items ?? []).map((s) => s.trim()).filter((s) => !isBoilerplateReportText(s));
+  return (items ?? [])
+    .map((s) => s.trim())
+    .filter((s) => !isBoilerplateReportText(s));
 }
 
 function msgsForGenius(
@@ -198,148 +212,155 @@ function msgsForGenius(
   return messages.filter((m) => legacy[personaId].includes(m.personaId));
 }
 
-
 function endReasonLabel(endReason?: string | null): string {
   switch (endReason) {
     case "manual":
-      return "사용자 종료";
+      return "사용자가 토론을 중간에 종료했다.";
     case "token_budget":
-      return "토큰 예산 소진";
+      return "토큰 예산 소진으로 토론이 종료되었다.";
     case "invalid_api_key":
-      return "API 키 오류";
+      return "API 키 오류로 토론이 종료되었다.";
     case "api_quota":
-      return "API 사용 한도 초과";
+      return "API 사용 한도 초과로 토론이 종료되었다.";
     case "api_rate_limit":
-      return "API 호출 일시 제한";
+      return "API 호출 제한으로 토론이 잠시 멈춘 뒤 종료되었다.";
     case "max_rounds":
-      return "토론 길이 한도";
+      return "토론 길이 한도에 도달해 종료되었다.";
     case "empty_turn":
-      return "응답 생성 실패";
+      return "응답 생성 실패로 토론이 종료되었다.";
     default:
-      return endReason ?? "알 수 없는 이유";
+      return "토론이 종료된 시점의 논의를 바탕으로 정리했다.";
   }
 }
 
-const REPORT_LLM_TIMEOUT_MS = 18_000;
-const REPORT_LLM_MAX_TOKENS = 420;
-const REPORT_HISTORY_MAX_MESSAGES = 28;
-const REPORT_HISTORY_MAX_CHARS = 7_000;
+function reportTitle(topic: string): string {
+  return `「${topic}」 토론 종합 보고서`;
+}
 
-function historyForReport(messages: DebateMessage[]): string {
-  const slice = messages.slice(-REPORT_HISTORY_MAX_MESSAGES);
-  let text = slice
-    .map((m) => {
-      const body = m.content.replace(/\s+/g, " ").trim();
-      const clipped = body.length > 220 ? `${body.slice(0, 217)}…` : body;
-      return `[${speakerLabel(m)}] ${clipped}`;
-    })
-    .join("\n");
+function personaReportLines(
+  personaId: "atlas" | "cipher" | "ember",
+  messages: DebateMessage[],
+): string[] {
+  const name = personaDisplayName(
+    personaId,
+    personaProviderFor(personaId, messages),
+  );
+  const msgs = msgsForGenius(personaId, messages);
+  const seen = new Set<string>();
+  const out: string[] = [];
 
-  if (text.length > REPORT_HISTORY_MAX_CHARS) {
-    text = `…(앞 발언 생략)\n${text.slice(-REPORT_HISTORY_MAX_CHARS)}`;
+  for (const msg of [...msgs].reverse()) {
+    const raw = msg.content.replace(/\s+/g, " ").trim();
+    if (raw.length < 10) continue;
+    const key = raw.slice(0, 32);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(`${name} — ${clipLine(raw)}`);
+    if (out.length >= PERSONA_BULLET_MAX) break;
   }
-  return text || "(없음)";
+
+  return out;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  return Promise.race([
-    promise,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
-  ]);
-}
+function findConsensusPoints(messages: DebateMessage[]): string[] {
+  const agreementRe =
+    /(?:인정|맞(?:긴|아)|ㅇㅇ|그치|동의|같은\s*생각|그건\s*맞)/;
+  const points: string[] = [];
 
-async function callLLM(
-  prompt: string,
-  maxTokens = REPORT_LLM_MAX_TOKENS,
-  options?: { apiKey?: string; model?: string; provider?: ApiProvider },
-): Promise<string | null> {
-  const key = options?.apiKey ?? process.env.OPENAI_API_KEY;
-  if (!key) return null;
-
-  const run = async (): Promise<string | null> => {
-    if (options?.provider === "gemini") {
-      const result = await requestGeminiTurn(
-        key,
-        options.model ?? DEFAULT_GEMINI_MODEL,
-        "JSON만 출력",
-        prompt,
-        maxTokens,
-        { singleAttempt: true, fastFailRateLimit: true },
-      );
-      return result.content;
+  for (let i = 1; i < messages.length; i++) {
+    const prev = messages[i - 1]!;
+    const cur = messages[i]!;
+    if (isGodSpeaker(cur.personaId) || isGodSpeaker(prev.personaId)) continue;
+    if (normalizePersonaId(cur.personaId) === normalizePersonaId(prev.personaId)) {
+      continue;
     }
+    if (!agreementRe.test(cur.content)) continue;
 
-    const client = new OpenAI({ apiKey: key });
-    try {
-      const response = await client.chat.completions.create({
-        model: options?.model ?? DEFAULT_OPENAI_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: maxTokens,
-        temperature: 0.55,
-      });
-      return response.choices[0]?.message?.content?.trim() ?? null;
-    } catch {
-      return null;
-    }
-  };
+    const snippet = clipLine(prev.content, 72);
+    if (snippet.length < 12) continue;
+    points.push(`${snippet} — 이 지점에 공감·동의가 있었다.`);
+    if (points.length >= 2) break;
+  }
 
-  return withTimeout(run(), REPORT_LLM_TIMEOUT_MS);
+  return points;
 }
 
-function buildOfflineReport(
+function buildExecutiveSummary(
+  topic: string,
+  messages: DebateMessage[],
+  endReason?: string | null,
+): string {
+  const ctx = parseTopic(topic);
+  const names = namesSummary(messages);
+  const topicBrief =
+    ctx.sideA && ctx.sideB
+      ? `${ctx.sideA}와 ${ctx.sideB}`
+      : ctx.topic;
+  const shortDebate = messages.length < MIN_MESSAGES_FOR_FULL_REPORT;
+  const endNote = endReasonLabel(endReason);
+
+  const parts = [
+    `「${topic}」를 주제로 ${names}가 원탁에서 대화했다.`,
+    `총 ${messages.length}건의 발언이 기록되었다.`,
+    endNote,
+  ];
+
+  if (shortDebate) {
+    parts.push(
+      "발언 수가 많지 않아, 중간 논의 기준의 잠정 정리다.",
+    );
+  }
+
+  parts.push(
+    `${topicBrief}를 놓고 세 사람의 관점과 종합 결론을 아래에 정리했다.`,
+  );
+
+  return parts.join(" ");
+}
+
+/** LLM 없이 항상 동일 템플릿·톤으로 보고서 생성 */
+export function buildStructuredReport(
   topic: string,
   messages: DebateMessage[],
   endReason?: string | null,
 ): Omit<DebateReport, "debateId" | "generatedAt"> {
-  const ctx = parseTopic(topic);
-  const atlasMsgs = msgsForGenius("atlas", messages);
-  const cipherMsgs = msgsForGenius("cipher", messages);
-  const emberMsgs = msgsForGenius("ember", messages);
-
   if (messages.length === 0) {
-    const why = endReasonLabel(endReason);
     return {
-      title: `${topic} — 토론 종합 보고서`,
-      executiveSummary: `토론이 시작되기 전 종료되어 발언이 0건입니다. 종료 사유: ${why}.`,
+      title: reportTitle(topic),
+      executiveSummary: `「${topic}」 토론이 시작되기 전 종료되어 발언이 없다. ${endReasonLabel(endReason)}`,
       consensusPoints: [],
       proArguments: [],
       conArguments: [],
       emberArguments: [],
       unresolvedIssues: [],
       finalConclusion:
-        "본격적인 논의가 진행되지 않아 결론을 내리기 어렵습니다.",
+        "본격적인 논의가 진행되지 않아, 이번 토론에서는 결론을 내리기 어렵다.",
       recommendation: "",
     };
   }
 
-  const sideA = ctx.sideA;
-  const sideB = ctx.sideB;
-  const topicBrief =
-    sideA && sideB
-      ? `${sideA}와 ${sideB}`
-      : ctx.displayTopic || topic;
-
-  const lastEmber = emberMsgs[emberMsgs.length - 1]?.content;
-  const finalConclusion = finalizeConclusion(
-    lastEmber && !isWishyWashyConclusion(lastEmber) ? lastEmber : undefined,
-    topic,
-    messages,
-  );
+  const shortDebate = messages.length < MIN_MESSAGES_FOR_FULL_REPORT;
+  const atlasLines = personaReportLines("atlas", messages);
+  const cipherLines = personaReportLines("cipher", messages);
+  const emberLines = personaReportLines("ember", messages);
 
   return {
-    title: `${topic} — 대화 종합 보고서`,
-    executiveSummary: `총 ${messages.length}개 발언으로 ${topicBrief}를 다뤘다. ${namesSummary(messages)}가 각자 시각으로 대화했다.`,
-    consensusPoints: cleanReportItems(personaSummaryBullets(emberMsgs, 2)),
-    proArguments: personaSummaryBullets(atlasMsgs, 3),
-    conArguments: personaSummaryBullets(cipherMsgs, 3),
-    emberArguments: personaSummaryBullets(emberMsgs, 3),
-    unresolvedIssues: [],
-    finalConclusion,
+    title: reportTitle(topic),
+    executiveSummary: buildExecutiveSummary(topic, messages, endReason),
+    consensusPoints: findConsensusPoints(messages),
+    proArguments: atlasLines,
+    conArguments: cipherLines,
+    emberArguments: emberLines,
+    unresolvedIssues: shortDebate
+      ? ["논의가 충분히 이어지지 않아 쟁점 일부는 열린 채로 남았다."]
+      : [],
+    finalConclusion: buildDecisiveConclusion(topic, messages, shortDebate),
     recommendation: "",
   };
 }
 
-export { buildOfflineReport };
+/** @deprecated buildStructuredReport 사용 */
+export const buildOfflineReport = buildStructuredReport;
 
 export async function generateFinalReport(
   topic: string,
@@ -351,88 +372,5 @@ export async function generateFinalReport(
     provider?: ApiProvider;
   },
 ): Promise<Omit<DebateReport, "debateId" | "generatedAt">> {
-  if (messages.length === 0) {
-    return buildOfflineReport(topic, messages, options?.endReason);
-  }
-
-  const historyText = historyForReport(messages);
-
-  const atlasName = personaDisplayName(
-    "atlas",
-    providerFromMessageSource(
-      messages.find(
-        (m) => !isGodSpeaker(m.personaId) && normalizePersonaId(m.personaId) === "atlas",
-      )?.llmSource,
-    ),
-  );
-  const cipherName = personaDisplayName(
-    "cipher",
-    providerFromMessageSource(
-      messages.find(
-        (m) => !isGodSpeaker(m.personaId) && normalizePersonaId(m.personaId) === "cipher",
-      )?.llmSource,
-    ),
-  );
-  const emberName = personaDisplayName(
-    "ember",
-    providerFromMessageSource(
-      messages.find(
-        (m) => !isGodSpeaker(m.personaId) && normalizePersonaId(m.personaId) === "ember",
-      )?.llmSource,
-    ),
-  );
-
-  const ctx = parseTopic(topic);
-
-  const llmResult = options?.apiKey
-    ? await callLLM(
-        `주제: "${topic}"
-${ctx.sideA && ctx.sideB ? `비교: ${ctx.sideA} vs ${ctx.sideB}` : ""}
-발언(${messages.length}개, 최근 위주):
-${historyText}
-
-JSON만. ${atlasName}·${cipherName}·${emberName} 관점 각각 1~2줄 요약.
-finalConclusion은 한쪽을 가리키는 결론 1~2문장(중립 금지).
-unresolvedIssues·recommendation은 빈 값.
-{
-  "title": "보고서 제목",
-  "executiveSummary": "2~3문장",
-  "consensusPoints": [],
-  "proArguments": ["${atlasName} 핵심"],
-  "conArguments": ["${cipherName} 핵심"],
-  "emberArguments": ["${emberName} 핵심"],
-  "unresolvedIssues": [],
-  "finalConclusion": "단호한 결론",
-  "recommendation": ""
-}`,
-        REPORT_LLM_MAX_TOKENS,
-        options,
-      )
-    : null;
-
-  if (llmResult) {
-    try {
-      const parsed = JSON.parse(llmResult.replace(/```json|```/g, "").trim());
-      if (parsed.executiveSummary) {
-        const recommendation = String(parsed.recommendation ?? "").trim();
-        return {
-          title: parsed.title ?? `${topic} — 토론 종합 보고서`,
-          executiveSummary: parsed.executiveSummary,
-          consensusPoints: cleanReportItems(parsed.consensusPoints),
-          proArguments: cleanReportItems(parsed.proArguments),
-          conArguments: cleanReportItems(parsed.conArguments),
-          emberArguments: cleanReportItems(parsed.emberArguments),
-          unresolvedIssues: cleanReportItems(parsed.unresolvedIssues),
-          finalConclusion: finalizeConclusion(parsed.finalConclusion, topic, messages),
-          recommendation: isBoilerplateReportText(recommendation)
-            ? ""
-            : recommendation,
-        };
-      }
-    } catch {
-      // fall through to offline report
-    }
-  }
-
-  return buildOfflineReport(topic, messages, options?.endReason);
+  return buildStructuredReport(topic, messages, options?.endReason);
 }
