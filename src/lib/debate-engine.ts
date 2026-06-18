@@ -23,6 +23,10 @@ import {
 import { generateDebateTurn } from "./llm";
 import { isTurnComplete } from "./debate-turn-budget";
 import {
+  EMPTY_TURN_RETRY_BASE_MS,
+  EMPTY_TURN_RETRY_STEP_MS,
+} from "./debate-profile";
+import {
   DEFAULT_TURN_INTERVAL_MS,
   effectiveTurnIntervalMs,
   enforceNextSpeaker,
@@ -221,7 +225,7 @@ async function processDebateTurnInner(
         await endDebate(debateId, "empty_turn");
         return null;
       }
-      queueNextTurn(debateId, 700 + streak * 250);
+      queueNextTurn(debateId, EMPTY_TURN_RETRY_BASE_MS + streak * EMPTY_TURN_RETRY_STEP_MS);
       return null;
     }
 

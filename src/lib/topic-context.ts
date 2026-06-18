@@ -247,7 +247,7 @@ export function parseTopic(raw: string): TopicContext {
     mode: "topic",
     topic,
     displayTopic: topic,
-    debateQuestion: `「${topic}」는 전반적으로 긍정적인가, 부정적인가`,
+    debateQuestion: topic,
     sideA: null,
     sideB: null,
     brief: "자·강·세가 주제를 각자 시각으로 대화",
@@ -290,34 +290,12 @@ export function getModeLabel(mode: DebateMode): string {
   return labels[mode];
 }
 
-/** LLM 프롬프트용 — 단톡 맥락 한 줄 */
+/** LLM 프롬프트용 — 주제와 무관하게 동일한 단톡 맥락 */
 export function topicChatLine(ctx: TopicContext): string {
-  if (ctx.mode === "casual") {
-    return `「${ctx.displayTopic}」 얘기를 친구 셋이 단톡하듯 반말로.`;
-  }
-  if (ctx.sideA && ctx.sideB) {
-    return `「${ctx.sideA} vs ${ctx.sideB}」 얘기 중.`;
-  }
-  return `「${ctx.displayTopic}」 얘기 중.`;
+  return `「${ctx.topic}」 얘기 중. 친구 셋이 단톡하듯 반말로.`;
 }
 
-/** 사실·수치 확인이 필요한 주제만 검색 (추상 윤리·철학은 검색 off → 90초 지연 방지) */
-export function topicUsesSearch(ctx: TopicContext): boolean {
-  if (ctx.domain === "philosophy" || ctx.domain === "social" || ctx.domain === "general") {
-    return false;
-  }
-  if (ctx.domain === "science" || ctx.domain === "tech") return true;
-  if (ctx.mode === "proposition" && (ctx.domain === "esports" || ctx.domain === "food")) {
-    return true;
-  }
+/** 실시간 토론 턴은 검색 비활성 — 모든 주제 동일 속도 */
+export function topicUsesSearch(_ctx: TopicContext): boolean {
   return false;
-}
-
-/** 추상·철학 토론 — 품질 필터·검색 완화 */
-export function topicIsAbstract(ctx: TopicContext): boolean {
-  return (
-    ctx.domain === "philosophy" ||
-    ctx.mode === "wh_question" ||
-    (ctx.mode === "proposition" && ctx.domain !== "esports" && ctx.domain !== "food")
-  );
 }

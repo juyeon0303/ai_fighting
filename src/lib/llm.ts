@@ -11,11 +11,15 @@ import {
   personaSystemInstruction,
   sanitizeTurnOutput,
   scrubLowQualityPhrases,
-  topicUsesSearch,
 } from "./debate-content";
 import type { PersonaLlmRuntime } from "./debate-llm-config";
 import { requestGeminiChat } from "./gemini";
-import { parseTopic, topicIsAbstract } from "./topic-context";
+import {
+  DEBATE_MAX_ATTEMPTS,
+  DEBATE_TEMPERATURE,
+  DEBATE_TEMPERATURE_SAVE,
+  DEBATE_USE_GOOGLE_SEARCH,
+} from "./debate-profile";
 import {
   clampTurnContent,
   extractCompleteTurnText,
@@ -44,8 +48,7 @@ type ProviderTurnResult = {
   truncated: boolean;
 };
 
-const MAX_ATTEMPTS = 3;
-const MAX_ABSTRACT_ATTEMPTS = 2;
+const MAX_ATTEMPTS = DEBATE_MAX_ATTEMPTS;
 
 function usageTotal(usage?: {
   total_tokens?: number;
@@ -130,7 +133,7 @@ async function requestOpenAiChatTurn(
         })),
       ],
       max_tokens: maxOutputTokens(personaId, tokenSaveMode),
-      temperature: tokenSaveMode ? 0.88 : 0.94,
+      temperature: tokenSaveMode ? DEBATE_TEMPERATURE_SAVE : DEBATE_TEMPERATURE,
       top_p: 0.92,
     });
 
@@ -224,13 +227,10 @@ export async function generateDebateTurn(
   _debateId: string,
   runtime: PersonaLlmRuntime,
 ): Promise<TurnResult> {
-  const ctx = parseTopic(topic);
   const source = runtime.provider === "gemini" ? "gemini" : "openai";
   const save = runtime.tokenSaveMode;
-  const abstract = topicIsAbstract(ctx);
-  const maxAttempts = abstract ? MAX_ABSTRACT_ATTEMPTS : MAX_ATTEMPTS;
-  const temperature = save ? 0.88 : 0.94;
-  const googleSearch = !save && topicUsesSearch(ctx);
+  const temperature = save ? DEBATE_TEMPERATURE_SAVE : DEBATE_TEMPERATURE;
+  const googleSearch = DEBATE_USE_GOOGLE_SEARCH;
 
   if (!runtime.apiKey) {
     return {
@@ -249,7 +249,7 @@ export async function generateDebateTurn(
   let lastWasSelfAnswer = false;
   let lastWasDrift = false;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const result = await callProviderTurn(
       topic,
       runtime,
@@ -301,8 +301,7 @@ export async function generateDebateTurn(
     if (
       content &&
       driftsOffTopic(topic, history, content) &&
-      history.length >= 4 &&
-      !abstract
+      history.length >= 6
     ) {
       lastWasDrift = true;
       lastWasContradiction = false;
@@ -320,7 +319,7 @@ export async function generateDebateTurn(
       };
     }
 
-    if (abstract && attempt === maxAttempts - 1 && result.content?.trim()) {
+    if (attempt === MAX_ATTEMPTS - 1 && result.content?.trim()) {
       const relaxed = acceptRelaxedTurn(result.content, personaId, save);
       if (relaxed) {
         return {

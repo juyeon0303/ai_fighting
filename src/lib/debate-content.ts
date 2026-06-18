@@ -1,7 +1,12 @@
 import type { ApiProvider, DebateMessage, PersonaId } from "./types";
 import type { TopicContext } from "./topic-context";
-import { parseTopic, topicChatLine, topicIsAbstract, topicUsesSearch } from "./topic-context";
+import { parseTopic, topicChatLine, topicUsesSearch } from "./topic-context";
 import type { TopicDomain } from "./topic-context";
+import {
+  DEBATE_LENGTH_NORMAL,
+  DEBATE_LENGTH_SAVE,
+  DEBATE_VOICE_RULES,
+} from "./debate-profile";
 import {
   GOD_DISPLAY_NAME,
   isGodSpeaker,
@@ -13,7 +18,7 @@ import {
 
 export type ChatTurn = { role: "user" | "assistant"; text: string };
 
-export { topicUsesSearch, topicIsAbstract };
+export { topicUsesSearch };
 
 const META_LINE =
   /^\s*\*.*\*?\s*$|casual tone|Yes\.|^\s*-\s*(GE|MI|NI|자|강|세|J|K|S)\s*:/i;
@@ -36,8 +41,8 @@ const PERSONA_VOICE: Record<PersonaId, string> = {
 const TURN_HINTS = [
   "방금 말에 툭 반응하고 네 생각 이어가.",
   "동의든 반박이든 친구한테 말하듯 자연스럽게.",
-  "같은 시작 말고 한마디만 다르게.",
-  "짧게. 단톡 속도로.",
+  "근거나 반례 하나 넣고 말해.",
+  "짧게. 단톡 속도로, 생각은 깊게.",
 ];
 
 const POSITIVE_NEAR =
@@ -71,6 +76,7 @@ function topicRelevanceHits(text: string, ctx: TopicContext): number {
     if (anchor.length >= 2 && lower.includes(anchor.toLowerCase())) hits++;
   }
   if (DOMAIN_TOPIC_TERMS[ctx.domain].test(text)) hits++;
+  if (ctx.domain !== "general" && DOMAIN_TOPIC_TERMS.general.test(text)) hits++;
   return hits;
 }
 
@@ -167,7 +173,7 @@ export function isSelfAnswerTurn(
   return false;
 }
 
-/** 주제에서 너무 벗어난 잡담·메타 수다면 true */
+/** 주제에서 너무 벗어난 잡담·메타 수다면 true (모든 주제 동일 기준) */
 export function driftsOffTopic(
   topic: string,
   history: DebateMessage[],
@@ -175,27 +181,13 @@ export function driftsOffTopic(
 ): boolean {
   const ctx = parseTopic(topic);
   const t = newText.trim();
-  if (!t) return false;
+  if (!t || history.length < 6) return false;
   if (topicRelevanceHits(t, ctx) >= 1) return false;
-  if (topicIsAbstract(ctx)) return false;
   if (META_CHAT_DRIFT.test(t)) return true;
 
-  if (
-    /(?:우리(?:만)?\s*(?:개)?꿀잼|역대급\s*(?:경기|축제)|빨리\s*성사)/.test(t) &&
-    /(?:팝콘|축제|톡방|잠\s*다\s*잤|분석글)/.test(t)
-  ) {
-    return true;
-  }
-
-  if (history.length >= 6) {
-    const recent = [...history.slice(-2).map((m) => m.content), t];
-    const allOffTopic = recent.every((line) => topicRelevanceHits(line, ctx) === 0);
-    if (allOffTopic && /(?:ㅋㅋ|꿀잼|재밌|뇌절|우리\s*방|팝콘)/.test(t)) {
-      return true;
-    }
-  }
-
-  return false;
+  const recent = [...history.slice(-2).map((m) => m.content), t];
+  const allOffTopic = recent.every((line) => topicRelevanceHits(line, ctx) === 0);
+  return allOffTopic && /(?:ㅋㅋ|꿀잼|재밌|뇌절|우리\s*방|팝콘|톡방)/.test(t);
 }
 
 /** 꾸며낸 인용·에세이 남발만 재시도 */
@@ -230,25 +222,13 @@ export function personaSystemInstruction(
   const name = personaDisplayName(personaId, provider);
   const names = personaNamesLabel(provider);
   const chat = topicChatLine(ctx);
-  const length = tokenSaveMode
-    ? "1~3문장, 단톡처럼 짧게."
-    : "2~4문장, 친구 단톡 반말. 문장 길이 들쭉날쭉해도 됨.";
+  const length = tokenSaveMode ? DEBATE_LENGTH_SAVE : DEBATE_LENGTH_NORMAL;
 
   return [
     `너는 ${name}. ${PERSONA_VOICE[personaId]}`,
     `친구 ${names}랑 ${chat}`,
     length,
-    "말투: 근데, 솔직히, 아니, 그치, ㅋㅋ, ~거든, ~잖아 섞어 써.",
-    "순서 정해진 거 없음. 말하고 싶을 때 끼어들되, 방금 네가 말했으면 한 턴 쉬어.",
-    "직전 말에 자연스럽게 이어져. 매번 '반박합니다' 같은 토론 말투는 금지.",
-    "자기 말에 '그치' '맞아' '그래서'로 받는 자문자답 금지. 반응은 남 말에만.",
-    "주제에서 완전히 벗어나 톡방·팝콘·잡수다만 하지 마. 가끔 빗대는 건 되는데 핵심 주제는 유지.",
-    "신(사용자)이 끼어들면 태클·방향 조정으로 받아. 무시하거나 농담으로 넘기지 마.",
-    "네가 이미 말한 입장과 반대 주장 금지. 입장 바꿀 때만 '아까는 그랬는데'처럼 이유부터.",
-    "네 예전 말을 남 말처럼 만들거나 자기 말을 까지 마.",
-    "꾸며낸 연구·대학 실험·통계 인용 금지. 확실치 않으면 단정 짧게.",
-    "영어·메타·괄호 설명·비유 라벨 붙이지 마. 한국어 반말만.",
-    "이름·콜론(:) 붙이지 마.",
+    DEBATE_VOICE_RULES,
   ].join(" ");
 }
 
@@ -324,11 +304,7 @@ function currentTurnUserPrompt(
   }
 
   if (history.length >= 4) {
-    const focus =
-      ctx.sideA && ctx.sideB
-        ? `${ctx.sideA}·${ctx.sideB} 중심으로. 톡방·팝콘 잡담만 하지 마.`
-        : `「${ctx.displayTopic}」에서 너무 벗어나지 마.`;
-    nudge += `\n${focus}`;
+    nudge += `\n「${ctx.topic}」에서 너무 벗어나지 마.`;
   }
 
   return nudge;
@@ -422,9 +398,7 @@ export function buildDebateRetryHint(
       : "자기 말에 동의·받아치기 한 자문자답이야. 친구 말에 반응하거나 다른 각도로 다시.";
   }
   if (drift) {
-    return tokenSaveMode
-      ? "주제 너무 벗어났어. 톡방·팝콘 말고 토론 주제로 다시."
-      : "주제에서 너무 새었어. 잡담 말고 토론 핵심(선수·쟁점)으로 다시.";
+    return "주제에서 너무 벗어났어. 지금 주제 중심으로 다시.";
   }
   if (incomplete) {
     return tokenSaveMode
