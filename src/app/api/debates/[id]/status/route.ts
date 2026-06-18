@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDebate, updateDebateStatus } from "@/lib/db";
-import { manualEndDebate } from "@/lib/debate-engine";
+import { finalizeDebate, manualEndDebate } from "@/lib/debate-engine";
 import type { DebateStatus } from "@/lib/types";
 
 export async function PATCH(
@@ -21,8 +21,12 @@ export async function PATCH(
     return NextResponse.json({ error: "잘못된 상태입니다." }, { status: 400 });
   }
 
-  if (status === "ended" && debate.status !== "ended") {
-    await manualEndDebate(id);
+  if (status === "ended") {
+    if (debate.status !== "ended") {
+      await manualEndDebate(id);
+    } else if (debate.reportStatus !== "done") {
+      await finalizeDebate(id);
+    }
     const updated = await getDebate(id);
     return NextResponse.json(updated);
   }

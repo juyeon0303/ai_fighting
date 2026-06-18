@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { generateFinalReport } from "./analysis";
+import { generateFinalReport, buildOfflineReport } from "./analysis";
 import {
   addMessage,
   tryAddMessage,
@@ -47,6 +47,7 @@ const emptyTurnStreak = new Map<string, number>();
 const rateLimitStreak = new Map<string, number>();
 const rateLimitBackoffUntil = new Map<string, number>();
 const finalizing = new Set<string>();
+const finalizeInflight = new Map<string, Promise<void>>();
 const scheduledTurnTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let workerStarted = false;
 let workerTimer: ReturnType<typeof setInterval> | null = null;
@@ -79,14 +80,29 @@ function queueNextTurn(debateId: string, delayMs: number): void {
 }
 
 export async function finalizeDebate(debateId: string): Promise<void> {
-  if (finalizing.has(debateId)) return;
-
   const existing = await getDebateReport(debateId);
   if (existing) {
     debateEvents.emit("report", { debateId, report: existing });
     return;
   }
 
+  const inflight = finalizeInflight.get(debateId);
+  if (inflight) {
+    await inflight;
+    return;
+  }
+
+  const promise = finalizeDebateInner(debateId);
+  finalizeInflight.set(debateId, promise);
+  try {
+    await promise;
+  } finally {
+    finalizeInflight.delete(debateId);
+  }
+}
+
+async function finalizeDebateInner(debateId: string): Promise<void> {
+  if (finalizing.has(debateId)) return;
   finalizing.add(debateId);
 
   try {
@@ -102,14 +118,24 @@ export async function finalizeDebate(debateId: string): Promise<void> {
     const messages = await getDebateMessages(debateId);
     const analysisOpts = resolveDebateAnalysisOptions(debate);
 
-    const reportData = await generateFinalReport(
-      debate.topic,
-      messages,
-      {
-        endReason: debate.endReason,
-        ...analysisOpts,
-      },
-    );
+    let reportData: Awaited<ReturnType<typeof generateFinalReport>>;
+    try {
+      reportData = await generateFinalReport(
+        debate.topic,
+        messages,
+        {
+          endReason: debate.endReason,
+          ...(analysisOpts ?? {}),
+        },
+      );
+    } catch (error) {
+      console.error(`[debate ${debateId}] report LLM failed:`, error);
+      reportData = buildOfflineReport(
+        debate.topic,
+        messages,
+        debate.endReason,
+      );
+    }
 
     const report = await saveDebateReport({
       ...reportData,
@@ -118,6 +144,22 @@ export async function finalizeDebate(debateId: string): Promise<void> {
     });
 
     debateEvents.emit("report", { debateId, report });
+  } catch (error) {
+    console.error(`[debate ${debateId}] finalize failed:`, error);
+    try {
+      const debate = await getDebate(debateId);
+      if (!debate) return;
+      const messages = await getDebateMessages(debateId);
+      const report = await saveDebateReport({
+        ...buildOfflineReport(debate.topic, messages, debate.endReason),
+        debateId,
+        generatedAt: new Date().toISOString(),
+      });
+      debateEvents.emit("report", { debateId, report });
+    } catch (fallbackError) {
+      console.error(`[debate ${debateId}] offline report failed:`, fallbackError);
+      await updateReportStatus(debateId, "none");
+    }
   } finally {
     finalizing.delete(debateId);
   }
@@ -415,8 +457,16 @@ export async function kickstartDebate(debateId: string): Promise<void> {
 
 export async function manualEndDebate(debateId: string): Promise<void> {
   const debate = await getDebate(debateId);
-  if (!debate || debate.status === "ended") return;
-  await endDebate(debateId);
+  if (!debate) return;
+
+  if (debate.status === "ended") {
+    await finalizeDebate(debateId);
+    return;
+  }
+
+  clearScheduledTurn(debateId);
+  turnInflight.delete(debateId);
+  await endDebate(debateId, "manual");
 }
 
 const MAX_GOD_INTERVENTION_CHARS = 400;

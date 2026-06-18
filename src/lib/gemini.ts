@@ -20,6 +20,8 @@ export type GeminiRequestOptions = {
   temperature?: number;
   /** 429면 폴백 루프 없이 즉시 rate_limit 반환 (RPM 과호출 방지) */
   fastFailRateLimit?: boolean;
+  /** 보고서 등 단발 호출 — 모델·인증 폴백 생략 */
+  singleAttempt?: boolean;
 };
 
 export function isLikelyGeminiKey(key: string): boolean {
@@ -191,8 +193,14 @@ export async function requestGeminiChat(
 
   const searchModes = options.googleSearch ? [true, false] : [false];
   const temperature = options.temperature ?? 0.94;
+  const models = options.singleAttempt
+    ? [normalizeGeminiModel(model)]
+    : modelCandidates(model);
+  const auths: Array<"header" | "query"> = options.singleAttempt
+    ? ["header"]
+    : authModes(apiKey);
 
-  for (const candidateModel of modelCandidates(model)) {
+  for (const candidateModel of models) {
     for (const useSearch of searchModes) {
       const body = buildGeminiBody(
         system,
@@ -204,7 +212,7 @@ export async function requestGeminiChat(
       );
       const timeoutMs = useSearch ? FETCH_TIMEOUT_SEARCH_MS : FETCH_TIMEOUT_MS;
 
-      for (const auth of authModes(apiKey)) {
+      for (const auth of auths) {
         try {
           const result = await callGeminiOnce(
             apiKey,
@@ -291,6 +299,7 @@ export async function requestGeminiTurn(
   system: string,
   user: string,
   outputTokenLimit = 90,
+  options: GeminiRequestOptions = {},
 ): Promise<{
   content: string | null;
   tokensUsed: number;
@@ -302,5 +311,6 @@ export async function requestGeminiTurn(
     system,
     [{ role: "user", text: user }],
     outputTokenLimit,
+    options,
   );
 }

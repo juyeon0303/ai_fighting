@@ -201,6 +201,8 @@ function msgsForGenius(
 
 function endReasonLabel(endReason?: string | null): string {
   switch (endReason) {
+    case "manual":
+      return "사용자 종료";
     case "token_budget":
       return "토큰 예산 소진";
     case "invalid_api_key":
@@ -218,37 +220,70 @@ function endReasonLabel(endReason?: string | null): string {
   }
 }
 
+const REPORT_LLM_TIMEOUT_MS = 18_000;
+const REPORT_LLM_MAX_TOKENS = 420;
+const REPORT_HISTORY_MAX_MESSAGES = 28;
+const REPORT_HISTORY_MAX_CHARS = 7_000;
+
+function historyForReport(messages: DebateMessage[]): string {
+  const slice = messages.slice(-REPORT_HISTORY_MAX_MESSAGES);
+  let text = slice
+    .map((m) => {
+      const body = m.content.replace(/\s+/g, " ").trim();
+      const clipped = body.length > 220 ? `${body.slice(0, 217)}…` : body;
+      return `[${speakerLabel(m)}] ${clipped}`;
+    })
+    .join("\n");
+
+  if (text.length > REPORT_HISTORY_MAX_CHARS) {
+    text = `…(앞 발언 생략)\n${text.slice(-REPORT_HISTORY_MAX_CHARS)}`;
+  }
+  return text || "(없음)";
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    promise,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+}
+
 async function callLLM(
   prompt: string,
-  maxTokens = 400,
+  maxTokens = REPORT_LLM_MAX_TOKENS,
   options?: { apiKey?: string; model?: string; provider?: ApiProvider },
 ): Promise<string | null> {
   const key = options?.apiKey ?? process.env.OPENAI_API_KEY;
   if (!key) return null;
 
-  if (options?.provider === "gemini") {
-    const result = await requestGeminiTurn(
-      key,
-      options.model ?? DEFAULT_GEMINI_MODEL,
-      "JSON만 출력",
-      prompt,
-      maxTokens,
-    );
-    return result.content;
-  }
+  const run = async (): Promise<string | null> => {
+    if (options?.provider === "gemini") {
+      const result = await requestGeminiTurn(
+        key,
+        options.model ?? DEFAULT_GEMINI_MODEL,
+        "JSON만 출력",
+        prompt,
+        maxTokens,
+        { singleAttempt: true, fastFailRateLimit: true },
+      );
+      return result.content;
+    }
 
-  const client = new OpenAI({ apiKey: key });
-  try {
-    const response = await client.chat.completions.create({
-      model: options?.model ?? DEFAULT_OPENAI_MODEL,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: maxTokens,
-      temperature: 0.6,
-    });
-    return response.choices[0]?.message?.content?.trim() ?? null;
-  } catch {
-    return null;
-  }
+    const client = new OpenAI({ apiKey: key });
+    try {
+      const response = await client.chat.completions.create({
+        model: options?.model ?? DEFAULT_OPENAI_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: maxTokens,
+        temperature: 0.55,
+      });
+      return response.choices[0]?.message?.content?.trim() ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  return withTimeout(run(), REPORT_LLM_TIMEOUT_MS);
 }
 
 function buildOfflineReport(
@@ -304,6 +339,8 @@ function buildOfflineReport(
   };
 }
 
+export { buildOfflineReport };
+
 export async function generateFinalReport(
   topic: string,
   messages: DebateMessage[],
@@ -314,9 +351,11 @@ export async function generateFinalReport(
     provider?: ApiProvider;
   },
 ): Promise<Omit<DebateReport, "debateId" | "generatedAt">> {
-  const historyText = messages
-    .map((m) => `[${speakerLabel(m)}] ${m.content}`)
-    .join("\n");
+  if (messages.length === 0) {
+    return buildOfflineReport(topic, messages, options?.endReason);
+  }
+
+  const historyText = historyForReport(messages);
 
   const atlasName = personaDisplayName(
     "atlas",
@@ -345,36 +384,31 @@ export async function generateFinalReport(
 
   const ctx = parseTopic(topic);
 
-  const llmResult = await callLLM(
-    `토론 주제: "${topic}"
+  const llmResult = options?.apiKey
+    ? await callLLM(
+        `주제: "${topic}"
+${ctx.sideA && ctx.sideB ? `비교: ${ctx.sideA} vs ${ctx.sideB}` : ""}
+발언(${messages.length}개, 최근 위주):
+${historyText}
 
-전체 발언:
-${historyText || "(없음)"}
-
-위 대화의 최종 보고서를 JSON으로 작성하세요.
-- 찬성/반대/중립 분류 금지. ${atlasName}·${cipherName}·${emberName} 세 사람 관점을 각각 정리.
-- 발언문 그대로 복사 금지. 각 항목은 한 줄 요약(재서술).
-- "다시 토론을 권한다", "추가 근거가 필요" 같은 형식적·빈말 금지.
-- finalConclusion: 진짜 결론 1~2문장. "양쪽 다 좋다", "각자 매력", "확인했다/도달했다" 같은 중립 요약 금지.
-  ${ctx.sideA && ctx.sideB ? `비교 주제(${ctx.sideA} vs ${ctx.sideB})면 어느 쪽이 낫다 또는 언제 무엇을 쓸지 못 박기.` : "찬반·질문 주제면 찬/반 또는 답을 하나로 정하기."}
-  애매한 균형잡기 금지.
-- unresolvedIssues, recommendation은 빈 배열/빈 문자열로 두세요.
+JSON만. ${atlasName}·${cipherName}·${emberName} 관점 각각 1~2줄 요약.
+finalConclusion은 한쪽을 가리키는 결론 1~2문장(중립 금지).
+unresolvedIssues·recommendation은 빈 값.
 {
   "title": "보고서 제목",
-  "executiveSummary": "3~4문장 요약",
-  "consensusPoints": ["실제로 맞춰진 점만, 없으면 []"],
-  "proArguments": ["${atlasName} 핵심1", "${atlasName} 핵심2"],
-  "conArguments": ["${cipherName} 핵심1", "${cipherName} 핵심2"],
-  "emberArguments": ["${emberName} 핵심1", "${emberName} 핵심2"],
+  "executiveSummary": "2~3문장",
+  "consensusPoints": [],
+  "proArguments": ["${atlasName} 핵심"],
+  "conArguments": ["${cipherName} 핵심"],
+  "emberArguments": ["${emberName} 핵심"],
   "unresolvedIssues": [],
-  "finalConclusion": "한쪽을 가리키는 단호한 결론 1~2문장",
+  "finalConclusion": "단호한 결론",
   "recommendation": ""
-}
-
-JSON만 출력하세요.`,
-    800,
-    options,
-  );
+}`,
+        REPORT_LLM_MAX_TOKENS,
+        options,
+      )
+    : null;
 
   if (llmResult) {
     try {

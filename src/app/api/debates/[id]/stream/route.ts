@@ -4,7 +4,7 @@ import {
   getDebateReport,
 } from "@/lib/db";
 import { sanitizeDebateForClient } from "@/lib/debate-llm-config";
-import { debateEvents, processDebateTurn, startDebateWorker } from "@/lib/debate-engine";
+import { debateEvents, finalizeDebate, processDebateTurn, startDebateWorker } from "@/lib/debate-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +43,8 @@ export async function GET(
 
       if (debate.status === "active") {
         processDebateTurn(id).catch(console.error);
+      } else if (debate.status === "ended" && debate.reportStatus !== "done" && !report) {
+        finalizeDebate(id).catch(console.error);
       }
 
       const onMessage = (payload: { debateId: string; message: unknown }) => {

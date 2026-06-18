@@ -208,6 +208,31 @@ export function DebateArena({ debateId }: DebateArenaProps) {
   }, [debateId, status, messages.length]);
 
   useEffect(() => {
+    if (status !== "ended") return;
+    setShowReport(true);
+
+    const syncReport = async () => {
+      try {
+        const res = await fetch(`/api/debates/${debateId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.report) {
+          setReport(data.report);
+          setReportStatus("done");
+        } else if (data.reportStatus) {
+          setReportStatus(data.reportStatus);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
+    void syncReport();
+    const pollId = setInterval(syncReport, 2000);
+    return () => clearInterval(pollId);
+  }, [debateId, status]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
@@ -360,6 +385,8 @@ export function DebateArena({ debateId }: DebateArenaProps) {
                               ? "응답 생성 실패"
                               : endReason === "max_rounds"
                                 ? "토론 길이 한도"
+                                : endReason === "manual"
+                                  ? "사용자 종료"
                                 : endReason}
                     </span>
                   </>
