@@ -16,6 +16,7 @@ export type TopicDomain =
   | "entertainment"
   | "social"
   | "science"
+  | "philosophy"
   | "general";
 
 export interface TopicContext {
@@ -65,6 +66,12 @@ function detectDomain(text: string): TopicDomain {
     return "social";
   if (/지구|우주|물리|화학|생물|과학|하늘|DNA|양자/.test(t))
     return "science";
+  if (
+    /자유의지|존재|인식|윤리|도덕|정의|의미|진리|실재|의식|행복|선악|철학|사회구성원|교도소|죄|책임|권리|인간|자유|결정론|헌법|정체성|가치|본질|이원론|실존|무엇일까|있을까|없을까/.test(
+      t,
+    )
+  )
+    return "philosophy";
   return "general";
 }
 
@@ -115,8 +122,10 @@ function buildAnchors(ctx: Partial<TopicContext> & { topic: string }): string[] 
   if (ctx.sideB) anchors.add(ctx.sideB);
   if (ctx.debateQuestion) {
     const words = ctx.debateQuestion.match(/[가-힣A-Za-z0-9]{2,}/g) ?? [];
-    words.slice(0, 4).forEach((w) => anchors.add(w));
+    words.slice(0, 8).forEach((w) => anchors.add(w));
   }
+  const topicWords = ctx.topic.match(/[가-힣]{2,}/g) ?? [];
+  topicWords.slice(0, 10).forEach((w) => anchors.add(w));
   return [...anchors].filter((a) => a.length >= 1);
 }
 
@@ -292,9 +301,23 @@ export function topicChatLine(ctx: TopicContext): string {
   return `「${ctx.displayTopic}」 얘기 중.`;
 }
 
-/** 과학·기술·찬반 주제만 검색 보강 */
+/** 사실·수치 확인이 필요한 주제만 검색 (추상 윤리·철학은 검색 off → 90초 지연 방지) */
 export function topicUsesSearch(ctx: TopicContext): boolean {
+  if (ctx.domain === "philosophy" || ctx.domain === "social" || ctx.domain === "general") {
+    return false;
+  }
   if (ctx.domain === "science" || ctx.domain === "tech") return true;
-  if (ctx.mode === "proposition") return true;
+  if (ctx.mode === "proposition" && (ctx.domain === "esports" || ctx.domain === "food")) {
+    return true;
+  }
   return false;
+}
+
+/** 추상·철학 토론 — 품질 필터·검색 완화 */
+export function topicIsAbstract(ctx: TopicContext): boolean {
+  return (
+    ctx.domain === "philosophy" ||
+    ctx.mode === "wh_question" ||
+    (ctx.mode === "proposition" && ctx.domain !== "esports" && ctx.domain !== "food")
+  );
 }

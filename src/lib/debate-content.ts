@@ -1,6 +1,6 @@
 import type { ApiProvider, DebateMessage, PersonaId } from "./types";
 import type { TopicContext } from "./topic-context";
-import { parseTopic, topicChatLine, topicUsesSearch } from "./topic-context";
+import { parseTopic, topicChatLine, topicIsAbstract, topicUsesSearch } from "./topic-context";
 import type { TopicDomain } from "./topic-context";
 import {
   GOD_DISPLAY_NAME,
@@ -13,7 +13,7 @@ import {
 
 export type ChatTurn = { role: "user" | "assistant"; text: string };
 
-export { topicUsesSearch };
+export { topicUsesSearch, topicIsAbstract };
 
 const META_LINE =
   /^\s*\*.*\*?\s*$|casual tone|Yes\.|^\s*-\s*(GE|MI|NI|자|강|세|J|K|S)\s*:/i;
@@ -59,7 +59,9 @@ const DOMAIN_TOPIC_TERMS: Record<TopicDomain, RegExp> = {
   entertainment: /영화|드라마|게임|애니|음악|아이돌|넷플릭스|netflix/i,
   social: /연애|결혼|정치|경제|직장|학교|사회|원격/i,
   science: /과학|물리|화학|지구|우주|dna|양자|실험/i,
-  general: /주제|논점|쟁점|비교|장단/i,
+  philosophy:
+    /자유|의지|존재|인식|윤리|도덕|정의|의미|진리|실재|인간|의식|행복|선악|철학|사회|구성원|교도소|죄|책임|권리|법|격리|수감|결정론|양자|본질|가치|정체성|의무|권력|정의|공정/i,
+  general: /주제|논점|쟁점|비교|장단|사회|인간|법|권리/i,
 };
 
 function topicRelevanceHits(text: string, ctx: TopicContext): number {
@@ -175,6 +177,7 @@ export function driftsOffTopic(
   const t = newText.trim();
   if (!t) return false;
   if (topicRelevanceHits(t, ctx) >= 1) return false;
+  if (topicIsAbstract(ctx)) return false;
   if (META_CHAT_DRIFT.test(t)) return true;
 
   if (

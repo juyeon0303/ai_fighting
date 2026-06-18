@@ -30,7 +30,7 @@ const COMPLETE_TAIL =
   /(?:습니다|입니다|거예요|했어요|해요|예요|에요|네요|군요|세요|더라|거든|잖아|같아|거야|할게|할래|맞아|그래|거지|겠다|겠어|겠지|아니야|그렇지|맞지|알겠지|그치|인정|ㄹㅇ|ㅇㅇ|모르겠|편이야|텐데|니까|는데|라니까|다니까|ㅋㅋ|ㅎㅎ|지|네|나|걸|래|다|요|죠|까|함|임|줘|봐|봤어|했어|좋아|싫어|아니|뿐)\s*$/;
 
 const INCOMPLETE_TAIL =
-  /(?:까지(?:는|도)?|정도(?:까지)?|수준(?:까지)?|하려(?:고)?|할\s*수\s*있(?:는|을)?|것(?:은|이)?|하다\s*가)\s*다\s*$|(?:짓|하|쓰|보|릴|할|될|싶|같|줄|올|볼|단정|뜨는)\s*$/;
+  /(?:까지(?:는|도)?|정도(?:까지)?|수준(?:까지)?|하려(?:고)?|할\s*수\s*있(?:는|을)?|것(?:은|이)?|하다\s*가)\s*다\s*$|(?:짓|쓰|보|릴|될|싶|줄|올|볼|뜨는)\s*$/;
 
 export function isTurnComplete(content: string): boolean {
   const t = content.trim();
@@ -39,7 +39,10 @@ export function isTurnComplete(content: string): boolean {
   if (/[.!?…?]\s*$/.test(t)) return true;
   if (INCOMPLETE_TAIL.test(t)) return false;
   if (COMPLETE_TAIL.test(t)) return true;
-  return t.length >= 12;
+  if (/(?:다르지|아닐까|할까|있지|없지|같지|맞지|거지|인데|거든|잖아|니까|는데)\s*$/u.test(t)) {
+    return true;
+  }
+  return t.length >= 10;
 }
 
 export function isIncompleteTurn(content: string): boolean {

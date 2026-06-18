@@ -15,7 +15,7 @@ import {
 } from "./debate-content";
 import type { PersonaLlmRuntime } from "./debate-llm-config";
 import { requestGeminiChat } from "./gemini";
-import { parseTopic } from "./topic-context";
+import { parseTopic, topicIsAbstract } from "./topic-context";
 import {
   clampTurnContent,
   extractCompleteTurnText,
@@ -45,6 +45,7 @@ type ProviderTurnResult = {
 };
 
 const MAX_ATTEMPTS = 3;
+const MAX_ABSTRACT_ATTEMPTS = 2;
 
 function usageTotal(usage?: {
   total_tokens?: number;
@@ -93,6 +94,21 @@ function normalizeTurn(
   if (!out || !isTurnComplete(out)) return "";
   if (isLowQualityTurn(out)) return "";
   return out;
+}
+
+function acceptRelaxedTurn(
+  raw: string | null,
+  personaId: PersonaId,
+  tokenSaveMode: boolean,
+): string {
+  if (!raw?.trim()) return "";
+  const cleaned = sanitizeTurnOutput(raw);
+  const text = scrubLowQualityPhrases(cleaned).replace(/\s+/g, " ").trim();
+  if (text.length < 8 || isLowQualityTurn(text)) return "";
+  const clamped = clampTurnContent(text, personaId, tokenSaveMode);
+  if (clamped && clamped.length >= 8) return clamped;
+  const cap = tokenSaveMode ? 480 : 720;
+  return text.slice(0, cap).trim();
 }
 
 async function requestOpenAiChatTurn(
@@ -211,6 +227,8 @@ export async function generateDebateTurn(
   const ctx = parseTopic(topic);
   const source = runtime.provider === "gemini" ? "gemini" : "openai";
   const save = runtime.tokenSaveMode;
+  const abstract = topicIsAbstract(ctx);
+  const maxAttempts = abstract ? MAX_ABSTRACT_ATTEMPTS : MAX_ATTEMPTS;
   const temperature = save ? 0.88 : 0.94;
   const googleSearch = !save && topicUsesSearch(ctx);
 
@@ -231,7 +249,7 @@ export async function generateDebateTurn(
   let lastWasSelfAnswer = false;
   let lastWasDrift = false;
 
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const result = await callProviderTurn(
       topic,
       runtime,
@@ -283,7 +301,8 @@ export async function generateDebateTurn(
     if (
       content &&
       driftsOffTopic(topic, history, content) &&
-      history.length >= 4
+      history.length >= 4 &&
+      !abstract
     ) {
       lastWasDrift = true;
       lastWasContradiction = false;
@@ -299,6 +318,18 @@ export async function generateDebateTurn(
         source,
         stopReason: null,
       };
+    }
+
+    if (abstract && attempt === maxAttempts - 1 && result.content?.trim()) {
+      const relaxed = acceptRelaxedTurn(result.content, personaId, save);
+      if (relaxed) {
+        return {
+          content: relaxed,
+          tokensUsed: totalTokens,
+          source,
+          stopReason: null,
+        };
+      }
     }
 
     if (!lastWasContradiction && !lastWasSelfAnswer && !lastWasDrift) {

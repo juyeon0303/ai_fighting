@@ -184,12 +184,17 @@ export function DebateArena({ debateId }: DebateArenaProps) {
         if (!full.ok) return;
         const fullData = await full.json();
         if (fullData.messages?.length) {
+          fullData.messages.forEach((m: DebateMessage) =>
+            knownMessageIds.current.add(m.id),
+          );
           setMessages((prev) => {
-            if (fullData.messages.length <= prev.length) return prev;
-            fullData.messages.forEach((m: DebateMessage) =>
-              knownMessageIds.current.add(m.id),
-            );
-            return fullData.messages;
+            if (
+              fullData.messages.length > prev.length ||
+              (prev.length === 0 && fullData.messages.length > 0)
+            ) {
+              return fullData.messages;
+            }
+            return prev;
           });
         }
       } catch {

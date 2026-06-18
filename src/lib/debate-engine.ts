@@ -221,7 +221,7 @@ async function processDebateTurnInner(
         await endDebate(debateId, "empty_turn");
         return null;
       }
-      queueNextTurn(debateId, 1800 + streak * 500);
+      queueNextTurn(debateId, 700 + streak * 250);
       return null;
     }
 
