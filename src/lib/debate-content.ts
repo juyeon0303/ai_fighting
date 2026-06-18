@@ -402,8 +402,8 @@ export function buildDebateRetryHint(
   }
   if (incomplete) {
     return tokenSaveMode
-      ? "중간에 끊겼어. 1~3문장, 친구 반말로 끝까지 다시."
-      : "중간에 끊겼어. 친구 단톡 반말로 끝까지 다시.";
+      ? "중간에 끊겼어. 1~3문장, 끝까지 마무리해서 다시."
+      : "중간에 끊겼어. 문장 끝까지 자연스럽게 마무리하고 다시.";
   }
   if (quality) {
     return "꾸며낸 연구·통계 빼고, 단톡 반말로 다시.";

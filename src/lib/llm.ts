@@ -25,6 +25,9 @@ import {
   extractCompleteTurnText,
   isTurnComplete,
   maxOutputTokens,
+  salvageTurnText,
+  SAVE_MODE_MAX_CHARS,
+  TURN_MAX_CHARS,
 } from "./debate-turn-budget";
 
 export type LlmStopReason =
@@ -85,16 +88,28 @@ function normalizeTurn(
 
   const cleaned = sanitizeTurnOutput(raw);
   const text = scrubLowQualityPhrases(cleaned);
-  let out = clampTurnContent(text, personaId, tokenSaveMode);
+  const strict = truncated;
 
-  if (truncated || !isTurnComplete(out)) {
-    out = extractCompleteTurnText(text);
-    if (tokenSaveMode && out) {
-      out = clampTurnContent(out, personaId, true);
+  let out = text.replace(/\s+/g, " ").trim();
+
+  if (truncated || !isTurnComplete(out, { strict })) {
+    const salvaged = salvageTurnText(
+      text,
+      tokenSaveMode ? SAVE_MODE_MAX_CHARS : TURN_MAX_CHARS,
+    );
+    if (salvaged) {
+      out = salvaged;
+    } else {
+      out = extractCompleteTurnText(text);
+      if (tokenSaveMode && out) {
+        out = clampTurnContent(out, personaId, true);
+      }
     }
+  } else if (tokenSaveMode) {
+    out = clampTurnContent(out, personaId, true);
   }
 
-  if (!out || !isTurnComplete(out)) return "";
+  if (!out || !isTurnComplete(out, { strict: truncated })) return "";
   if (isLowQualityTurn(out)) return "";
   return out;
 }
@@ -108,10 +123,19 @@ function acceptRelaxedTurn(
   const cleaned = sanitizeTurnOutput(raw);
   const text = scrubLowQualityPhrases(cleaned).replace(/\s+/g, " ").trim();
   if (text.length < 8 || isLowQualityTurn(text)) return "";
-  const clamped = clampTurnContent(text, personaId, tokenSaveMode);
-  if (clamped && clamped.length >= 8) return clamped;
-  const cap = tokenSaveMode ? 480 : 720;
-  return text.slice(0, cap).trim();
+
+  const salvaged = salvageTurnText(
+    text,
+    tokenSaveMode ? SAVE_MODE_MAX_CHARS : TURN_MAX_CHARS,
+  );
+  if (salvaged) return salvaged;
+
+  if (isTurnComplete(text)) {
+    const clamped = clampTurnContent(text, personaId, tokenSaveMode);
+    if (clamped) return clamped;
+  }
+
+  return "";
 }
 
 async function requestOpenAiChatTurn(
